@@ -36,6 +36,10 @@ import itertools
 import math
 import random as _random
 import sys
+from collections.abc import Iterable, Iterator
+from typing import Generic, TypeVar
+
+_T = TypeVar("_T")
 
 # --- colors --------------------------------------------------------------
 # Real NetLogo represents color as a single float on a ~140-value color
@@ -142,9 +146,12 @@ def color_to_rgb(color):
 
 
 # --- world state (module-level, singleton -- there is exactly one world) -
-_turtles = {}
-_patches = {}
-_links = {}  # (who1, who2) sorted tuple -> Link
+# Annotated (string forward refs, since Patch/Turtle/Link are all defined
+# later in this file) purely so editors can trace element types through
+# turtles/patches/links/ask() etc. -- see ask()'s own docstring.
+_turtles: dict[int, "Turtle"] = {}
+_patches: dict[tuple[int, int], "Patch"] = {}
+_links: dict[tuple[int, int], "Link"] = {}  # (who1, who2) sorted tuple -> Link
 _who_counter = itertools.count()
 _ticks = 0
 _default_shapes = {}
@@ -228,6 +235,18 @@ class Patch:
         self.pycor = pycor
         self.pcolor = black
 
+    # NetLogo's `patches-own` lets a model add its own patch attributes at
+    # will (Ants' `chemical`, Wolf Sheep's `countdown`, ...) -- this pair
+    # is a no-op at runtime (identical to Python's own default attribute
+    # behavior) but tells editors this class allows that, instead of
+    # flagging every model-added attribute as an error now that ask()/
+    # turtles/patches/etc. have real element types (see ask()'s docstring).
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+
+    def __getattr__(self, name):
+        raise AttributeError(name)
+
     def neighbors4(self):
         """NetLogo's `neighbors4`: the (up to 4) orthogonally-adjacent
         patches that exist -- fewer at a non-wrapping world's edge."""
@@ -293,6 +312,15 @@ class Turtle:
         self.color = white
         self.breed = breed
         self.shape = _default_shapes.get(breed, _default_shapes.get("turtles", "default"))
+
+    # NetLogo's `turtles-own` lets a model add its own turtle attributes at
+    # will (GasLab's `speed`/`mass`/`energy`, Ants' `carrying`, ...) -- see
+    # Patch's identical pair above for why this is here.
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+
+    def __getattr__(self, name):
+        raise AttributeError(name)
 
     def patch_here(self):
         return _patches.get((round(self.xcor), round(self.ycor)))
@@ -392,7 +420,7 @@ class Turtle:
         """NetLogo's `create-link-with`: an undirected link between this
         turtle and `other`, if one doesn't already exist. Returns the
         link."""
-        key = tuple(sorted((self.who, other.who)))
+        key = (min(self.who, other.who), max(self.who, other.who))
         if key not in _links:
             _links[key] = Link(self, other)
         return _links[key]
@@ -400,7 +428,7 @@ class Turtle:
     def link_neighbor(self, other):
         """NetLogo's `link-neighbor?`: is there a link between this turtle
         and `other`?"""
-        return tuple(sorted((self.who, other.who))) in _links
+        return (min(self.who, other.who), max(self.who, other.who)) in _links
 
     def link_neighbors(self):
         """NetLogo's `link-neighbors`: the other end of every link
@@ -427,7 +455,7 @@ class Turtle:
         best_dist = None
         for a in agents:
             d = self.distance_to(a)
-            if best is None or d < best_dist:
+            if best_dist is None or d < best_dist:
                 best, best_dist = a, d
         return best
 
@@ -453,17 +481,20 @@ class Turtle:
         return f"Turtle({self.who})"
 
 
-class AgentSet:
+class AgentSet(Generic[_T]):
     """A frozen snapshot -- what ask() and .where() both return -- safe to
-    iterate even if the loop kills or creates agents partway through."""
+    iterate even if the loop kills or creates agents partway through.
+    Generic (like ask(), see its docstring) purely so editors can trace
+    element types through .where()/.other()/etc. instead of every result
+    showing up as an untyped, hover-info-less `Unknown`."""
 
-    def __init__(self, agents):
+    def __init__(self, agents: Iterable[_T]):
         self._agents = list(agents)
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[_T]:
         return iter(self._agents)
 
-    def where(self, **conditions):
+    def where(self, **conditions) -> "AgentSet[_T]":
         """NetLogo's `with [ ... ]`, restricted to `attribute = value`
         checks. For anything else (comparators, `or`, a computed
         condition), use a plain `for`/`if` loop instead."""
@@ -471,44 +502,44 @@ class AgentSet:
             a for a in self._agents if all(getattr(a, key) == value for key, value in conditions.items())
         )
 
-    def count(self):
+    def count(self) -> int:
         return len(self._agents)
 
-    def any(self):
+    def any(self) -> bool:
         return bool(self._agents)
 
 
-class LiveAgentSet:
+class LiveAgentSet(Generic[_T]):
     """Like AgentSet, but membership is computed fresh every time it's
     iterated instead of frozen at construction -- what lets bare names
     like `turtles`, `patches`, and breed handles always reflect who
     currently exists, the way NetLogo's own agentset variables do."""
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[_T]:
         raise NotImplementedError
 
-    def where(self, **conditions):
+    def where(self, **conditions) -> AgentSet[_T]:
         return AgentSet(a for a in self if all(getattr(a, key) == value for key, value in conditions.items()))
 
-    def count(self):
+    def count(self) -> int:
         return sum(1 for _ in self)
 
-    def any(self):
+    def any(self) -> bool:
         return any(True for _ in self)
 
 
-class _AllTurtles(LiveAgentSet):
-    def __iter__(self):
+class _AllTurtles(LiveAgentSet["Turtle"]):
+    def __iter__(self) -> "Iterator[Turtle]":
         return iter(_turtles.values())
 
 
-class _AllPatches(LiveAgentSet):
-    def __iter__(self):
+class _AllPatches(LiveAgentSet["Patch"]):
+    def __iter__(self) -> "Iterator[Patch]":
         return iter(_patches.values())
 
 
-class _AllLinks(LiveAgentSet):
-    def __iter__(self):
+class _AllLinks(LiveAgentSet["Link"]):
+    def __iter__(self) -> "Iterator[Link]":
         return iter(_links.values())
 
 
@@ -537,15 +568,15 @@ class Link:
         return f"Link({self.end1.who}, {self.end2.who})"
 
 
-class Breed(LiveAgentSet):
+class Breed(LiveAgentSet["Turtle"]):
     def __init__(self, plural, singular):
         self.plural = plural
         self.singular = singular
 
-    def __iter__(self):
+    def __iter__(self) -> "Iterator[Turtle]":
         return (t for t in _turtles.values() if t.breed == self.plural)
 
-    def sprout(self, patch, n=1):
+    def sprout(self, patch, n=1) -> "list[Turtle]":
         """NetLogo's `sprout-<breed> n`: n new turtles of this breed, born
         on `patch`. Returns the new turtles directly (not via a callback)
         -- use a `for` loop to set them up."""
@@ -556,7 +587,7 @@ class Breed(LiveAgentSet):
             created.append(t)
         return created
 
-    def create(self, n=1):
+    def create(self, n=1) -> "list[Turtle]":
         """NetLogo's `create-<breed> n`: n new turtles of this breed, born
         at the origin."""
         created = []
@@ -567,12 +598,12 @@ class Breed(LiveAgentSet):
         return created
 
 
-def create_breed(plural, singular):
+def create_breed(plural, singular) -> Breed:
     """NetLogo's `breed [<plural> <singular>]`."""
     return Breed(plural, singular)
 
 
-def create_turtles(n=1):
+def create_turtles(n=1) -> "list[Turtle]":
     """NetLogo's `create-turtles n`: n new plain turtles (breed
     "turtles"), each at the origin. Like Breed.create()/Breed.sprout(),
     returns them directly -- use a `for` loop to set them up, not a
@@ -635,7 +666,7 @@ def floor(x):
     return math.floor(x)
 
 
-def ask(agents):
+def ask(agents: Iterable[_T]) -> list[_T]:
     """NetLogo's `ask`: snapshots the (possibly live) agentset so the
     for-loop over it is safe even if the loop kills or creates agents
     partway through. Used with `for`:
