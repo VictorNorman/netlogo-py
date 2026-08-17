@@ -151,7 +151,7 @@ def color_to_rgb(color):
 # turtles/patches/links/ask() etc. -- see ask()'s own docstring.
 _turtles: dict[int, "Turtle"] = {}
 _patches: dict[tuple[int, int], "Patch"] = {}
-_links: dict[tuple[int, int], "Link"] = {}  # (who1, who2) sorted tuple -> Link
+_links: "list[Link]" = []  # every link that exists, across every breed -- see Link/LinkBreed below
 _drawing: list = []  # (x1, y1, x2, y2, color) segments drawn by pen_down() turtles, oldest first
 _who_counter = itertools.count()
 _ticks = 0
@@ -180,6 +180,17 @@ def set_wrap(wrap):
     `towards()` all read this."""
     global _wrap
     _wrap = wrap
+
+
+def get_wrap():
+    """Reads back whatever set_wrap() last set. Every model calls
+    resize_world()/set_wrap() once, at its own module's top level, not
+    inside setup() -- since every model module is imported exactly once
+    (server/main.py, at process startup) but *selected* many times, this
+    is what server/main.py's _build_model() uses to re-apply a model's own
+    world size/wrapping every time it's (re)selected, instead of silently
+    running on whichever model happened to be imported last."""
+    return _wrap
 
 
 # Like ticks() (see below): min-pxcor/max-pxcor/min-pycor/max-pycor are
@@ -278,6 +289,23 @@ class Patch:
         distance, so it hasn't been needed."""
         return math.hypot(x - self.pxcor, y - self.pycor)
 
+    def turtles_here(self):
+        """NetLogo's `turtles-here`, called on a patch: every turtle
+        currently standing on it."""
+        return AgentSet(t for t in turtles if round(t.xcor) == self.pxcor and round(t.ycor) == self.pycor)
+
+    def sprout(self, n=1) -> "list[Turtle]":
+        """NetLogo's `sprout n`, called on a patch: n new plain
+        (default-breed) turtles born here -- the unnamed-breed sibling of
+        Breed.sprout(), for a model with no turtle breeds of its own (see
+        models/diffusion_on_directed_network.py)."""
+        created = []
+        for _ in range(n):
+            t = Turtle(xcor=self.pxcor, ycor=self.pycor)
+            _turtles[t.who] = t
+            created.append(t)
+        return created
+
     def __repr__(self):
         return f"Patch({self.pxcor}, {self.pycor})"
 
@@ -329,6 +357,9 @@ class Turtle:
         self.breed = breed
         self.shape = _default_shapes.get(breed, _default_shapes.get("turtles", "default"))
         self.pen_is_down = False  # NetLogo's pens start up; see pen_down()/pen_up() below
+        self.label = None  # NetLogo's `label` -- floating text drawn near the turtle; unset by default
+        self.hidden = False  # NetLogo's `hide-turtle`/`show-turtle` -- see those methods below
+        self.size = 1.0  # NetLogo's `size` -- scales how big turtles_grid() draws this turtle
 
     # NetLogo's `turtles-own` lets a model add its own turtle attributes at
     # will (GasLab's `speed`/`mass`/`energy`, Ants' `carrying`, ...) -- see
@@ -441,6 +472,24 @@ class Turtle:
         dx, dy = _wrapped_delta(other.xcor - self.xcor, other.ycor - self.ycor)
         return math.degrees(math.atan2(dx, dy)) % 360
 
+    def face(self, other):
+        """NetLogo's `face <agent>`: turn to point straight at another
+        turtle or patch."""
+        self.heading = self.towards(other)
+
+    def hide_turtle(self):
+        """NetLogo's `hide-turtle`: this turtle still exists for ask/where
+        queries, it just stops being drawn (see turtles_grid())."""
+        self.hidden = True
+
+    ht = hide_turtle
+
+    def show_turtle(self):
+        """NetLogo's `show-turtle`."""
+        self.hidden = False
+
+    st = show_turtle
+
     def in_radius(self, agents, distance):
         """NetLogo's `<agentset> in-radius <number>`, called as
         `asker.in_radius(agentset, distance)` since Python has no implicit
@@ -459,25 +508,34 @@ class Turtle:
         px, py = round(self.xcor), round(self.ycor)
         return AgentSet(a for a in agents if round(a.xcor) == px and round(a.ycor) == py)
 
+    # The four methods below all work against the single unnamed, undirected
+    # default link breed (Link.breed == "links", Link's own default) --
+    # NetLogo's own generic create-link-with/link-neighbor?/link-neighbors/
+    # my-links, as opposed to a *named* link breed's own versions of these
+    # (see LinkBreed below), a separate namespace in real NetLogo too.
     def create_link_with(self, other):
         """NetLogo's `create-link-with`: an undirected link between this
         turtle and `other`, if one doesn't already exist. Returns the
         link."""
-        key = (min(self.who, other.who), max(self.who, other.who))
-        if key not in _links:
-            _links[key] = Link(self, other)
-        return _links[key]
+        for link in _links:
+            if link.breed == "links" and {link.end1, link.end2} == {self, other}:
+                return link
+        link = Link(self, other)
+        _links.append(link)
+        return link
 
     def link_neighbor(self, other):
         """NetLogo's `link-neighbor?`: is there a link between this turtle
         and `other`?"""
-        return (min(self.who, other.who), max(self.who, other.who)) in _links
+        return any(link.breed == "links" and {link.end1, link.end2} == {self, other} for link in _links)
 
     def link_neighbors(self):
         """NetLogo's `link-neighbors`: the other end of every link
         touching this turtle."""
         result = []
-        for link in _links.values():
+        for link in _links:
+            if link.breed != "links":
+                continue
             if link.end1 is self:
                 result.append(link.end2)
             elif link.end2 is self:
@@ -486,7 +544,7 @@ class Turtle:
 
     def my_links(self):
         """NetLogo's `my-links`: every link touching this turtle."""
-        return AgentSet(l for l in _links.values() if l.end1 is self or l.end2 is self)
+        return AgentSet(l for l in _links if l.breed == "links" and (l.end1 is self or l.end2 is self))
 
     def nearest(self, agents):
         """NetLogo's `min-one-of <agentset> [distance myself]`, specialized
@@ -583,7 +641,7 @@ class _AllPatches(LiveAgentSet["Patch"]):
 
 class _AllLinks(LiveAgentSet["Link"]):
     def __iter__(self) -> "Iterator[Link]":
-        return iter(_links.values())
+        return iter(_links)
 
 
 turtles = _AllTurtles()
@@ -592,16 +650,32 @@ links = _AllLinks()
 
 
 class Link:
-    """A NetLogo link: an undirected connection between two turtles. Only
-    a single, unnamed link breed is supported -- no link-breed
-    declarations, no directed links, no tie/untie -- since no model built
-    against this runtime has needed more than that yet; see
-    Turtle.create_link_with()."""
+    """A NetLogo link: a connection between two turtles. `breed` names
+    which link breed this belongs to -- "links" (Link's own default) is
+    the single unnamed/default breed every model used until Diffusion on
+    a Directed Network needed *named* breeds too (see LinkBreed below);
+    `directed` marks whether end1 -> end2 is one-way (real NetLogo ties
+    directedness to the breed declaration itself, e.g. `directed-link-
+    breed`, not to an individual link) -- see Turtle.create_link_with()
+    for the unnamed/undirected case, LinkBreed.create_to() for a named
+    directed one."""
 
-    def __init__(self, end1, end2):
+    def __init__(self, end1, end2, breed="links", directed=False):
         self.end1 = end1
         self.end2 = end2
         self.color = white  # overwritten immediately by any model that creates links
+        self.breed = breed
+        self.directed = directed
+        self.hidden = False  # NetLogo's `hide-link`/`show-link` -- see those methods below
+
+    # NetLogo's `links-own` lets a model add its own link attributes at
+    # will (Diffusion's `current-flow`) -- see Patch's identical pair
+    # above for why this is here.
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+
+    def __getattr__(self, name):
+        raise AttributeError(name)
 
     def other_end(self, turtle):
         """NetLogo's `other-end`."""
@@ -610,6 +684,15 @@ class Link:
     def both_ends(self):
         """NetLogo's `both-ends`: this link's two turtles as an agentset."""
         return AgentSet((self.end1, self.end2))
+
+    def hide_link(self):
+        """NetLogo's `hide-link`: this link still exists (still counted,
+        still queryable), it just stops being drawn (see links_grid())."""
+        self.hidden = True
+
+    def show_link(self):
+        """NetLogo's `show-link`."""
+        self.hidden = False
 
     def __repr__(self):
         return f"Link({self.end1.who}, {self.end2.who})"
@@ -648,6 +731,64 @@ class Breed(LiveAgentSet["Turtle"]):
 def create_breed(plural, singular) -> Breed:
     """NetLogo's `breed [<plural> <singular>]`."""
     return Breed(plural, singular)
+
+
+class LinkBreed(LiveAgentSet["Link"]):
+    """NetLogo's `directed-link-breed [<plural> <singular>]` /
+    `undirected-link-breed [...]` -- a named link breed, e.g. Diffusion on
+    a Directed Network's active-links/inactive-links. Unlike the single
+    default (unnamed) breed (Turtle.create_link_with() and friends,
+    always Link.breed == "links"), several named breeds can coexist, and
+    a link's breed can be reassigned after creation -- just
+    `link.breed = other_breed.plural`, same as reassigning any other
+    attribute; that's how that model "rewires" a link without killing and
+    recreating it (change breed + hide_link()/show_link())."""
+
+    def __init__(self, plural, singular, directed):
+        self.plural = plural
+        self.singular = singular
+        self.directed = directed
+
+    def __iter__(self) -> "Iterator[Link]":
+        return (l for l in _links if l.breed == self.plural)
+
+    def create_to(self, turtle, targets) -> "list[Link]":
+        """NetLogo's `create-<breed>-to <agentset>`, called on the breed
+        with the asking turtle given explicitly:
+        `active_links.create_to(t, neighbor_nodes)`. Returns the new
+        links directly (not via a callback) -- use a `for` loop to set
+        them up, same as Breed.sprout()/.create()."""
+        created = []
+        for target in targets:
+            link = Link(turtle, target, breed=self.plural, directed=self.directed)
+            _links.append(link)
+            created.append(link)
+        return created
+
+    def out_neighbors(self, turtle) -> "AgentSet[Turtle]":
+        """NetLogo's `out-<breed>-neighbors`, called on the breed:
+        `active_links.out_neighbors(t)` -- the other end of every
+        outgoing link of this breed from `turtle`."""
+        return AgentSet(l.end2 for l in self if l.end1 is turtle)
+
+    def in_from(self, turtle, other):
+        """NetLogo's `in-<breed>-from`, called on the breed:
+        `active_links.in_from(t, other)` -- the incoming link of this
+        breed from `other` to `turtle`, or None if there isn't one."""
+        for l in self:
+            if l.end1 is other and l.end2 is turtle:
+                return l
+        return None
+
+
+def directed_link_breed(plural, singular) -> LinkBreed:
+    """NetLogo's `directed-link-breed [<plural> <singular>]`."""
+    return LinkBreed(plural, singular, directed=True)
+
+
+def undirected_link_breed(plural, singular) -> LinkBreed:
+    """NetLogo's `undirected-link-breed [<plural> <singular>]`."""
+    return LinkBreed(plural, singular, directed=False)
 
 
 def create_turtles(n=1) -> "list[Turtle]":
@@ -1164,14 +1305,20 @@ def _default_turtle_color(t):
 
 
 def turtles_grid(color_fn=None):
-    """The current turtles as a list of [xcor, ycor, heading, extra] rows
-    -- what state() hands the frontend as "turtles". `color_fn`, if given,
-    is a plain function taking a turtle and returning its `extra` value --
-    an [r, g, b] color, or any other value drawTurtles() (static/app.js)
-    understands, e.g. a carrying-food flag -- the default is the turtle's
-    real color (color_to_rgb(t.color))."""
+    """The current turtles as a list of [xcor, ycor, heading, extra, label,
+    size] rows -- what state() hands the frontend as "turtles". Turtles
+    with `.hidden` set (hide_turtle()) are left out entirely, matching
+    real NetLogo's own view. `color_fn`, if given, is a plain function
+    taking a turtle and returning its `extra` value -- an [r, g, b]
+    color, or any other value drawTurtles() (static/app.js) understands,
+    e.g. a carrying-food flag -- the default is the turtle's real color
+    (color_to_rgb(t.color)). `label` is the turtle's own `.label`
+    (NetLogo's `set label ...`), or null if never set -- drawTurtles()
+    renders it as floating text next to the turtle. `size` (NetLogo's
+    `set size ...`) scales how big it's drawn -- 1.0 (the default for
+    every turtle) matches the fixed size every model used to draw at."""
     color_fn = color_fn or _default_turtle_color
-    return [[t.xcor, t.ycor, t.heading, color_fn(t)] for t in turtles]
+    return [[t.xcor, t.ycor, t.heading, color_fn(t), t.label, t.size] for t in turtles if not t.hidden]
 
 
 def _default_link_color(link):
@@ -1179,14 +1326,22 @@ def _default_link_color(link):
 
 
 def links_grid(color_fn=None):
-    """The current links as a list of [x1, y1, x2, y2, extra] rows -- what
-    state() hands the frontend as "links". Self-contained (both endpoints'
-    coordinates inline) so drawLinks() (static/app.js) never needs to
-    cross-reference turtle positions by identity. `color_fn`, if given, is
-    a plain function taking a link and returning its `extra` value -- the
-    default is the link's real color (color_to_rgb(link.color))."""
+    """The current links as a list of [x1, y1, x2, y2, extra, directed]
+    rows -- what state() hands the frontend as "links". Self-contained
+    (both endpoints' coordinates inline) so drawLinks() (static/app.js)
+    never needs to cross-reference turtle positions by identity. Links
+    with `.hidden` set (hide_link()) are left out entirely, matching real
+    NetLogo's own view -- e.g. Diffusion on a Directed Network's inactive-
+    links. `color_fn`, if given, is a plain function taking a link and
+    returning its `extra` value -- the default is the link's real color
+    (color_to_rgb(link.color)). `directed` (NetLogo's directed-link-breed)
+    tells drawLinks() whether to draw an arrowhead."""
     color_fn = color_fn or _default_link_color
-    return [[l.end1.xcor, l.end1.ycor, l.end2.xcor, l.end2.ycor, color_fn(l)] for l in links]
+    return [
+        [l.end1.xcor, l.end1.ycor, l.end2.xcor, l.end2.ycor, color_fn(l), l.directed]
+        for l in links
+        if not l.hidden
+    ]
 
 
 def drawing_grid():
@@ -1257,12 +1412,7 @@ def auto_state(
     else:
         ns = module.__dict__
 
-    result = {
-        "tick": ticks(),
-        "width": _max_pxcor - _min_pxcor + 1,
-        "height": _max_pycor - _min_pycor + 1,
-    }
-
+    result = {}
     for widget in ns.get("__widgets__", []):
         if widget["type"] in ("slider", "switch", "chooser"):
             result[widget["name"]] = _resolve_widget_value(ns, widget["name"])
@@ -1270,6 +1420,15 @@ def auto_state(
             result[widget["key"]] = _resolve_widget_value(ns, widget["key"])
         elif widget["type"] == "plot":
             result["plot_data"] = plot_data()
+
+    # "tick"/"width"/"height" are reserved -- the frontend's worldToCanvas()
+    # math depends on "width"/"height" always meaning the actual world size
+    # in patches, so these always win over a same-named widget (e.g. a
+    # model with its own "height" slider, a real NetLogo variable name that
+    # just happens to collide) instead of the other way around.
+    result["tick"] = ticks()
+    result["width"] = _max_pxcor - _min_pxcor + 1
+    result["height"] = _max_pycor - _min_pycor + 1
 
     if patches:
         result["colors"] = patches_grid(patch_color)

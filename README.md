@@ -2,7 +2,7 @@
 
 A Python runtime for [NetLogo](https://ccl.northwestern.edu/netlogo/)-style agent-based models, plus a small FastAPI server and a zero-build browser frontend to run and watch them — either on the server or **entirely inside the browser** via [Pyodide](https://pyodide.org/) (CPython compiled to WebAssembly), with the model's source live-editable and re-runnable without a page reload.
 
-Ten classic NetLogo Sample Models are ported so far — **Fire**, **Flocking**, **GasLab**, **Ants**, **Wolf Sheep Predation**, **Virus on a Network**, **Life**, **Sierpinski Simple**, **Preferential Attachment**, and **Rock Paper Scissors** — each checked against its real `.nlogox` source line by line, not reimplemented from memory.
+Twelve classic NetLogo Sample Models are ported so far — **Fire**, **Flocking**, **GasLab**, **Ants**, **Wolf Sheep Predation**, **Virus on a Network**, **Life**, **Sierpinski Simple**, **Preferential Attachment**, **Rock Paper Scissors**, **Random Basic**, and **Diffusion on a Directed Network** — each checked against its real `.nlogox` source line by line, not reimplemented from memory.
 
 ```
 python -m uvicorn server.main:app --reload --port 8765
@@ -10,7 +10,7 @@ python -m uvicorn server.main:app --reload --port 8765
 
 Then open `http://localhost:8765`, pick a model, hit **setup** then **go**.
 
-## The ten models
+## The twelve models
 
 | Model | What it shows | Real source |
 |---|---|---|
@@ -24,6 +24,8 @@ Then open `http://localhost:8765`, pick a model, hit **setup** then **go**.
 | **Sierpinski Simple** | A single turtle recursively hatches three children per tick, each drawing a trail and shrinking by half — the first model here to use a pen, tracing out Sierpinski's self-similar tree. | `Sample Models/Mathematics/Fractals/Sierpinski Simple.nlogox` |
 | **Preferential Attachment** | "Rich get richer" scale-free network growth — the first model here to use a real histogram-mode plot pen, showing the resulting hub-heavy degree distribution. | `Sample Models/Networks/Preferential Attachment.nlogox` |
 | **Rock Paper Scissors** | Three colors compete in a cyclic-dominance ecosystem on a wrapping patch grid, producing chasing spiral patterns; event rates are drawn from a Poisson distribution. | `Sample Models/Biology/Rock Paper Scissors.nlogox` |
+| **Random Basic** | A messenger turtle picks a random value each tick and carries it to the matching column of a growing histogram — the first model here to use turtle labels (floating text next to a turtle). | `Sample Models/Mathematics/Probability/ProbLab/Random Basic.nlogox` |
+| **Diffusion on a Directed Network** | A quantity diffuses across a grid of nodes along directed links — the first model here to use directed links and more than one link breed; node size shows how much value it holds, link brightness shows how much just flowed through it. | `Sample Models/Networks/Diffusion on a Directed Network.nlogox` |
 
 Every model documents its own deliberate deviations from the real source in its module docstring (an explicit boolean instead of color-encoded turtle state, a simplified color model, app-specific monitors like Flocking's `order_parameter`, etc.) — nothing is silently dropped.
 
@@ -40,20 +42,20 @@ Switching the engine dropdown swaps the transport; the rendering code (`drawPatc
 
 ```
 engine/netlogo.py     the runtime: primitives, world state, widget system, auto_state()
-models/*.py           ten ported models
+models/*.py           twelve ported models
 server/main.py        FastAPI app: model registry + HTTP API + static file serving
 static/               zero-build frontend: index.html, app.js, style.css, pyodide-worker.js
 ```
 
 ### `engine/netlogo.py` — the runtime
 
-One module, ~900 lines, no external dependencies. It gives every model:
+One module, ~1,450 lines, no external dependencies. It gives every model:
 
 **World & agents**
-`resize_world`, `set_wrap`, `min_pxcor`/`max_pxcor`/`min_pycor`/`max_pycor`, `patch_at`, `clear_all`, `Patch` (`.pcolor`, `.neighbors4()`/`.neighbors8()` — wrap around the torus if the world wraps, `.distance_to_xy()`), `Turtle` (`.xcor`/`.ycor`/`.heading`/`.color`, `.forward()`/`.right()`/`.left()`/`.move_to()`, `.patch_here()`/`.patch_ahead()`/`.patch_left_and_ahead()`/`.patch_right_and_ahead()`, `.distance_to()`/`.towards()`/`.in_radius()`/`.other()`/`.here()`/`.nearest()`, `.hatch()`, `.die()`), `turtles`/`patches`/`links` (live agentsets), `create_breed`, `create_turtles`, `ask`, `.where(**kwargs)` (NetLogo's `with`), `.count()`/`.any()`.
+`resize_world`, `set_wrap`, `min_pxcor`/`max_pxcor`/`min_pycor`/`max_pycor`, `patch_at`, `clear_all`, `Patch` (`.pcolor`, `.neighbors4()`/`.neighbors8()` — wrap around the torus if the world wraps, `.distance_to_xy()`, `.turtles_here()`, `.sprout()`), `Turtle` (`.xcor`/`.ycor`/`.heading`/`.color`/`.label`/`.size`, `.forward()`/`.right()`/`.left()`/`.move_to()`/`.face()`, `.patch_here()`/`.patch_ahead()`/`.patch_left_and_ahead()`/`.patch_right_and_ahead()`, `.distance_to()`/`.towards()`/`.in_radius()`/`.other()`/`.here()`/`.nearest()`, `.hatch()`, `.die()`, `.hide_turtle()`/`.show_turtle()`), `turtles`/`patches`/`links` (live agentsets), `create_breed`, `create_turtles`, `ask`, `.where(**kwargs)` (NetLogo's `with`), `.count()`/`.any()`. A turtle's `.label` (any value, shown as floating text; see Random Basic) and `.size` (scales how big it's drawn; see Diffusion on a Directed Network) are both optional — every turtle defaults to no label and `size=1.0`, matching the fixed-size, unlabeled triangle every earlier model already drew.
 
 **Links**
-`Link` (`.end1`/`.end2`/`.color`, `.other_end()`, `.both_ends()`), `Turtle.create_link_with()`/`.link_neighbor()`/`.link_neighbors()`/`.my_links()`, `layout_spring(turtles, links, spring_constant, spring_length, repulsion_constant)` (a one-time, cosmetic force-directed layout — see Virus on a Network). Only a single, unnamed undirected link breed is supported so far — no link-breed declarations, no directed links, no `tie`/`untie`.
+`Link` (`.end1`/`.end2`/`.color`/`.breed`/`.directed`, `.other_end()`, `.both_ends()`, `.hide_link()`/`.show_link()`), `Turtle.create_link_with()`/`.link_neighbor()`/`.link_neighbors()`/`.my_links()` (the single unnamed, undirected default breed — see Virus on a Network), `layout_spring(turtles, links, spring_constant, spring_length, repulsion_constant)` (a one-time, cosmetic force-directed layout). `directed_link_breed`/`undirected_link_breed` declare a *named* breed (`LinkBreed`, with its own `.create_to()`, `.out_neighbors()`, `.in_from()`) — several can coexist, and "rewiring" a link between breeds is just reassigning its `.breed` (see Diffusion on a Directed Network, the first model here to use either).
 
 **Pen drawing**
 `Turtle.pen_down()`/`.pen_up()`, `clear_drawing` — moving a turtle with its pen down leaves a trail (an append-only history, unlike links: a segment stays even after the turtle that drew it dies; see Sierpinski Simple, the first model to use it).
@@ -77,7 +79,7 @@ Named colors as plain floats (`black`, `gray`, `green`, `red`, `white`, `violet`
 `slider`, `switch`, `chooser`, `monitor`, `button`, `plot_widget`/`plot`/`plotxy`/`histogram` — each is a plain function call at module load time that both returns the widget's default value *and* registers its metadata, so the model file is simultaneously the model and its own UI declaration. No separate spec to keep in sync. A plot pen defaults to an ordinary line/time-series pen; `plot_widget(..., pens=[(name, color, "bar")])` declares a real histogram-mode pen instead, fed by `histogram(pen, values)` (see Preferential Attachment).
 
 **`auto_state()`**
-NetLogo's own IDE never makes you write a serialization function — it just inspects turtles/patches/links/pen-drawing/plots directly to render them. `state()` only exists in this app because it needs one JSON snapshot per tick; `auto_state()` builds that snapshot automatically by reading whatever a model has already declared (every slider/switch/chooser value, every monitor — resolved by calling it if it's a function, else using it directly — the patch/turtle/link/drawing grids, plot data). Eight of the ten models don't define `state()` at all; the other two override just the one or two things `auto_state()` can't guess (Ants' chemical-gradient patch coloring, Fire suppressing turtles it has but doesn't want drawn).
+NetLogo's own IDE never makes you write a serialization function — it just inspects turtles/patches/links/pen-drawing/plots directly to render them. `state()` only exists in this app because it needs one JSON snapshot per tick; `auto_state()` builds that snapshot automatically by reading whatever a model has already declared (every slider/switch/chooser value, every monitor — resolved by calling it if it's a function, else using it directly — the patch/turtle/link/drawing grids, plot data). Ten of the twelve models don't define `state()` at all; the other two override just the one or two things `auto_state()` can't guess (Ants' chemical-gradient patch coloring, Fire suppressing turtles it has but doesn't want drawn).
 
 ### Widget system → automatic UI
 
@@ -163,4 +165,4 @@ Open `http://localhost:8765`. No build step, no bundler — `static/*.js`/`*.css
 
 ## Attribution
 
-The ten models here are Python ports of designs from NetLogo's own Sample Models library (Uri Wilensky and the CCL, Northwestern University; individual model copyrights are noted in each `.nlogox` file). This repository is an independent educational reimplementation of their *behavior* in a from-scratch Python runtime — it does not include or depend on NetLogo itself.
+The twelve models here are Python ports of designs from NetLogo's own Sample Models library (Uri Wilensky and the CCL, Northwestern University; individual model copyrights are noted in each `.nlogox` file). This repository is an independent educational reimplementation of their *behavior* in a from-scratch Python runtime — it does not include or depend on NetLogo itself.

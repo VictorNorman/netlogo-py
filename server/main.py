@@ -60,16 +60,59 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import engine.netlogo as netlogo
+
+
+def _world_snapshot():
+    """(min_pxcor, max_pxcor, min_pycor, max_pycor, wrap) -- whatever a
+    model's own top-level resize_world()/set_wrap() calls (see e.g.
+    models/fire.py) just set, captured immediately after importing it.
+    Every model module is imported exactly once, so those calls only ever
+    run once each -- the *last* one imported below would otherwise "win"
+    and silently stick for every other model too, since resize_world()/
+    set_wrap() just mutate shared globals in engine/netlogo.py. Each
+    snapshot gets stored on its model's MODEL_REGISTRY entry and
+    re-applied by _build_model() on every selection, so the active
+    model's own world size/wrapping is always what's actually in effect,
+    regardless of import order."""
+    return (netlogo.min_pxcor(), netlogo.max_pxcor(), netlogo.min_pycor(), netlogo.max_pycor(), netlogo.get_wrap())
+
+
 import models.fire as fire_module
+
+FIRE_WORLD = _world_snapshot()
 import models.flocking as flocking_module
+
+FLOCKING_WORLD = _world_snapshot()
 import models.gas_lab as gas_lab_module
+
+GAS_LAB_WORLD = _world_snapshot()
 import models.ants as ants_module
+
+ANTS_WORLD = _world_snapshot()
 import models.wolf_sheep as wolf_sheep_module
+
+WOLF_SHEEP_WORLD = _world_snapshot()
 import models.virus_on_network as virus_module
+
+VIRUS_WORLD = _world_snapshot()
 import models.life as life_module
+
+LIFE_WORLD = _world_snapshot()
 import models.sierpinski as sierpinski_module
+
+SIERPINSKI_WORLD = _world_snapshot()
 import models.preferential_attachment as preferential_attachment_module
+
+PREFERENTIAL_ATTACHMENT_WORLD = _world_snapshot()
 import models.rock_paper_scissors as rock_paper_scissors_module
+
+ROCK_PAPER_SCISSORS_WORLD = _world_snapshot()
+import models.random_basic as random_basic_module
+
+RANDOM_BASIC_WORLD = _world_snapshot()
+import models.diffusion_on_directed_network as diffusion_module
+
+DIFFUSION_WORLD = _world_snapshot()
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -153,6 +196,7 @@ def _plot_from_module(module):
 MODEL_REGISTRY = {
     "fire": {
         "label": "Fire",
+        "world": FIRE_WORLD,
         "render": "patches",
         # Sliders/monitors come from the module itself (models/fire.py's
         # `density = slider("density", ...)` / `monitor("percent_burned",
@@ -188,6 +232,7 @@ MODEL_REGISTRY = {
     },
     "flocking": {
         "label": "Flocking",
+        "world": FLOCKING_WORLD,
         "render": "turtles",
         "sliders": _sliders_from_module(flocking_module),
         "switches": _switches_from_module(flocking_module),
@@ -225,6 +270,7 @@ MODEL_REGISTRY = {
     },
     "gaslab": {
         "label": "GasLab",
+        "world": GAS_LAB_WORLD,
         "render": "patches_and_turtles",
         "sliders": _sliders_from_module(gas_lab_module),
         "switches": _switches_from_module(gas_lab_module),
@@ -259,6 +305,7 @@ MODEL_REGISTRY = {
     },
     "ants": {
         "label": "Ants",
+        "world": ANTS_WORLD,
         "render": "patches_and_turtles",
         "sliders": _sliders_from_module(ants_module),
         "switches": _switches_from_module(ants_module),
@@ -293,6 +340,7 @@ MODEL_REGISTRY = {
     },
     "wolf_sheep": {
         "label": "Wolf Sheep Predation",
+        "world": WOLF_SHEEP_WORLD,
         "render": "patches_and_turtles",
         "sliders": _sliders_from_module(wolf_sheep_module),
         "switches": _switches_from_module(wolf_sheep_module),
@@ -330,6 +378,7 @@ MODEL_REGISTRY = {
     },
     "virus_on_network": {
         "label": "Virus on a Network",
+        "world": VIRUS_WORLD,
         "render": "turtles_and_links",
         "sliders": _sliders_from_module(virus_module),
         "switches": _switches_from_module(virus_module),
@@ -365,6 +414,7 @@ MODEL_REGISTRY = {
     },
     "life": {
         "label": "Life",
+        "world": LIFE_WORLD,
         "render": "patches",
         "sliders": _sliders_from_module(life_module),
         "switches": _switches_from_module(life_module),
@@ -398,6 +448,7 @@ MODEL_REGISTRY = {
     },
     "sierpinski": {
         "label": "Sierpinski Simple",
+        "world": SIERPINSKI_WORLD,
         "render": "turtles",
         "sliders": _sliders_from_module(sierpinski_module),
         "switches": _switches_from_module(sierpinski_module),
@@ -430,6 +481,7 @@ MODEL_REGISTRY = {
     },
     "preferential_attachment": {
         "label": "Preferential Attachment",
+        "world": PREFERENTIAL_ATTACHMENT_WORLD,
         "render": "turtles",
         "sliders": _sliders_from_module(preferential_attachment_module),
         "switches": _switches_from_module(preferential_attachment_module),
@@ -463,6 +515,7 @@ MODEL_REGISTRY = {
     },
     "rock_paper_scissors": {
         "label": "Rock Paper Scissors",
+        "world": ROCK_PAPER_SCISSORS_WORLD,
         "render": "patches",
         "sliders": _sliders_from_module(rock_paper_scissors_module),
         "switches": _switches_from_module(rock_paper_scissors_module),
@@ -494,6 +547,75 @@ MODEL_REGISTRY = {
             },
         },
     },
+    "random_basic": {
+        "label": "Random Basic",
+        "world": RANDOM_BASIC_WORLD,
+        "render": "patches_and_turtles",
+        "sliders": _sliders_from_module(random_basic_module),
+        "switches": _switches_from_module(random_basic_module),
+        "choosers": _choosers_from_module(random_basic_module),
+        "monitors": _monitors_from_module(random_basic_module),
+        "plot": _plot_from_module(random_basic_module),
+        "info": """
+            <h2>Random Basic</h2>
+            <p>
+              A Python port of NetLogo's classic <em>Random Basic</em>
+              (ProbLab) model -- the first model in this app to use turtle
+              labels. Each tick, a black "messenger" turtle picks a random
+              number, its label, and walks to the matching column of a
+              histogram, dropping a "frame" there -- building up the
+              distribution of a random variable one draw at a time.
+            </p>
+            <p>
+              The <em>red-green</em> slider splits the columns into two
+              groups, colored as the histogram fills in (when
+              <em>colors?</em> is on) -- watch <em>%-red</em> converge
+              toward whatever share of the sample space falls left of that
+              split.
+            </p>
+        """,
+        "engines": {
+            "vectorized": {
+                "module": random_basic_module,
+                "source_file": "models/random_basic.py",
+            },
+        },
+    },
+    "diffusion_on_directed_network": {
+        "label": "Diffusion on a Directed Network",
+        "world": DIFFUSION_WORLD,
+        "render": "turtles_and_links",
+        "sliders": _sliders_from_module(diffusion_module),
+        "switches": _switches_from_module(diffusion_module),
+        "choosers": _choosers_from_module(diffusion_module),
+        "monitors": _monitors_from_module(diffusion_module),
+        "plot": _plot_from_module(diffusion_module),
+        "info": """
+            <h2>Diffusion on a Directed Network</h2>
+            <p>
+              A Python port of NetLogo's classic <em>Diffusion on a
+              Directed Network</em> model -- the first model in this app
+              to use directed links and more than one link breed. Each
+              tick, every node keeps a share of its own "value" and
+              divides the rest evenly among its outgoing links -- since
+              links are directed, node B can give value to node A without
+              A giving anything back.
+            </p>
+            <p>
+              A node's size shows how much value it holds; a link's
+              brightness shows how much value just flowed through it.
+              Watch the network settle toward an equilibrium -- sometimes
+              one node ends up with nearly everything, sometimes value
+              stays spread across many.
+            </p>
+        """,
+        "engines": {
+            "vectorized": {
+                "module": diffusion_module,
+                "source_file": "models/diffusion_on_directed_network.py",
+            },
+        },
+    },
 }
 
 active_model_key = "flocking"
@@ -506,7 +628,17 @@ def _build_model():
     # loads it once), and setup() is what resets it in place, the same way
     # NetLogo's own setup button resets the one shared world rather than
     # constructing a new one.
-    module = MODEL_REGISTRY[active_model_key]["engines"][active_engine_key]["module"]
+    entry = MODEL_REGISTRY[active_model_key]
+    # World size/wrapping are set once, at each model's own module-level
+    # resize_world()/set_wrap() call (import time) -- not something its
+    # own setup() re-asserts (see _world_snapshot() above), so re-apply
+    # this model's own values now, every time it's (re)selected, rather
+    # than leaving whatever the *previously* active model (or, right
+    # after server startup, the last model imported) left behind.
+    min_x, max_x, min_y, max_y, wrap = entry["world"]
+    netlogo.resize_world(min_x, max_x, min_y, max_y)
+    netlogo.set_wrap(wrap)
+    module = entry["engines"][active_engine_key]["module"]
     module.setup()
     return module
 

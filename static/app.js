@@ -40,6 +40,8 @@ const WASM_CLASS_NAMES = {
   sierpinski: null,
   preferential_attachment: null,
   rock_paper_scissors: null,
+  random_basic: null,
+  diffusion_on_directed_network: null,
 };
 
 // Not a plain setInterval: doStep() is an async network round-trip, and a
@@ -335,8 +337,12 @@ function canvasPixelToWorld(px, py) {
 // Shared by drawLinks()/drawDrawing(): both are just a list of
 // [x1, y1, x2, y2, [r,g,b]] line segments in world coordinates -- a link
 // between two turtles, or a pen-drawn trail segment, drawn identically.
+// A 6th `directed` element (only links_grid() ever sends one -- drawing
+// segments don't) draws a small arrowhead partway along the line, from
+// (x1,y1) toward (x2,y2), same direction as NetLogo's own directed-link
+// indicator.
 function drawSegments(state, segments) {
-  segments.forEach(([x1, y1, x2, y2, color]) => {
+  segments.forEach(([x1, y1, x2, y2, color, directed]) => {
     const [px1, py1] = worldToCanvas(state, x1, y1);
     const [px2, py2] = worldToCanvas(state, x2, y2);
     ctx.strokeStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
@@ -345,6 +351,27 @@ function drawSegments(state, segments) {
     ctx.moveTo(px1, py1);
     ctx.lineTo(px2, py2);
     ctx.stroke();
+
+    if (directed) {
+      const dx = px2 - px1;
+      const dy = py2 - py1;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len;
+      const uy = dy / len;
+      const tipX = px1 + ux * len * 0.65;
+      const tipY = py1 + uy * len * 0.65;
+      const backX = tipX - ux * 5;
+      const backY = tipY - uy * 5;
+      const perpX = -uy * 2.5;
+      const perpY = ux * 2.5;
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(backX + perpX, backY + perpY);
+      ctx.lineTo(backX - perpX, backY - perpY);
+      ctx.closePath();
+      ctx.fill();
+    }
   });
 }
 
@@ -358,7 +385,7 @@ function drawDrawing(state) {
 
 function drawTurtles(state) {
   state.turtles.forEach((t) => {
-    const [x, y, heading, extra] = t;
+    const [x, y, heading, extra, label, size] = t;
     const [px, py] = worldToCanvas(state, x, y);
     const rad = (heading * Math.PI) / 180;
 
@@ -367,8 +394,12 @@ function drawTurtles(state) {
     const dirY = -Math.cos(rad);
     const perpX = -dirY;
     const perpY = dirX;
-    const length = 7;
-    const width = 3.5;
+    // `size` (NetLogo's `set size ...`) scales the triangle -- 1 (every
+    // turtle's default, and every row from before turtles_grid() started
+    // sending a 6th element) draws at the same fixed size as always.
+    const sizeScale = size === undefined || size === null ? 1 : size;
+    const length = 7 * sizeScale;
+    const width = 3.5 * sizeScale;
 
     const tipX = px + dirX * length;
     const tipY = py + dirY * length;
@@ -395,6 +426,16 @@ function drawTurtles(state) {
     ctx.lineTo(baseRX, baseRY);
     ctx.closePath();
     ctx.fill();
+
+    // NetLogo's `set label ...` -- floating text just above/right of the
+    // turtle, same corner real NetLogo uses.
+    if (label !== null && label !== undefined) {
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "10px monospace";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(String(label), px + width + 1, py - width);
+    }
   });
 }
 
