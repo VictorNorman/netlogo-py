@@ -10,6 +10,8 @@ const plotCanvas = document.getElementById("plot-canvas");
 const plotCtx = plotCanvas.getContext("2d");
 const plotTitle = document.getElementById("plot-title");
 const plotLegend = document.getElementById("plot-legend");
+const speedSlider = document.getElementById("speed-slider");
+const speedLabel = document.getElementById("speed-label");
 const btnSetup = document.getElementById("btn-setup");
 const btnGo = document.getElementById("btn-go");
 const btnRunScript = document.getElementById("btn-run-script");
@@ -36,7 +38,18 @@ const WASM_CLASS_NAMES = {
   virus_on_network: null,
 };
 
-let goInterval = null;
+// Not a plain setInterval: doStep() is an async network round-trip, and a
+// fixed-cadence interval fires again regardless of whether the previous
+// call has actually finished -- for a model whose per-tick server cost can
+// exceed the interval (e.g. Flocking's O(N^2)-ish flockmate search), that
+// piles up overlapping in-flight requests, and clicking "go" to stop only
+// stops *scheduling new* ones -- the backlog already queued keeps
+// resolving and redrawing regardless, so the model visibly keeps running
+// for a while (or indefinitely) after you click stop. goRunning is checked
+// again after every doStep() resolves, before the next one is scheduled,
+// so stopping always takes effect within at most one in-flight step.
+let goRunning = false;
+let goTimeoutId = null;
 let specsByKey = {};
 let currentEngine = "vectorized";
 let currentPlotSpec = null; // the active model's plot_widget() declaration, or null
@@ -374,9 +387,10 @@ function setRunningUi(running) {
 }
 
 function stopGoLoop() {
-  if (goInterval !== null) {
-    clearInterval(goInterval);
-    goInterval = null;
+  goRunning = false;
+  if (goTimeoutId !== null) {
+    clearTimeout(goTimeoutId);
+    goTimeoutId = null;
   }
   setRunningUi(false);
 }
@@ -555,16 +569,70 @@ async function doStep() {
   return state.running;
 }
 
-function toggleGo() {
-  if (goInterval !== null) {
+// NetLogo's own toolbar "speed" slider, adapted for this app's simple
+// setInterval-based go loop: -100 (slowest) .. 0 (normal speed) .. 100
+// (fastest). 60ms was this app's original fixed tick interval -- that's
+// still what "normal speed" means; the slider scales it up or down from
+// there on a log curve (matching how the real slider feels -- small moves
+// near the center barely change anything, the extremes change it a lot).
+const NORMAL_SPEED_MS = 60;
+
+function speedToIntervalMs() {
+  const v = Number(speedSlider.value);
+  const ms = NORMAL_SPEED_MS * Math.pow(10, -v / 100);
+  return Math.max(5, Math.round(ms));
+}
+
+function updateSpeedLabel() {
+  const v = Number(speedSlider.value);
+  if (v === 0) {
+    speedLabel.textContent = "normal speed";
+  } else if (v > 0) {
+    speedLabel.textContent = "faster";
+  } else {
+    speedLabel.textContent = "slower";
+  }
+}
+
+async function goLoopStep() {
+  if (!goRunning) {
+    return;
+  }
+  goTimeoutId = null;
+  const stillRunning = await doStep();
+  if (!goRunning) {
+    // Stopped (or self-stopped via doStep()'s own stopGoLoop() call, e.g.
+    // Fire finishing) while this step was in flight -- don't schedule
+    // another one.
+    return;
+  }
+  if (!stillRunning) {
     stopGoLoop();
     return;
   }
-  setRunningUi(true);
-  goInterval = setInterval(() => {
-    doStep();
-  }, 60);
+  goTimeoutId = setTimeout(goLoopStep, speedToIntervalMs());
 }
+
+function toggleGo() {
+  if (goRunning) {
+    stopGoLoop();
+    return;
+  }
+  goRunning = true;
+  setRunningUi(true);
+  goLoopStep();
+}
+
+speedSlider.addEventListener("input", () => {
+  updateSpeedLabel();
+  // Take effect immediately for a step that's currently waiting between
+  // ticks; a step already in flight will just pick up the new speed when
+  // it schedules its own next one, no extra handling needed.
+  if (goRunning && goTimeoutId !== null) {
+    clearTimeout(goTimeoutId);
+    goTimeoutId = setTimeout(goLoopStep, speedToIntervalMs());
+  }
+});
 
 async function runCommand(text) {
   appendOutput(`observer> ${text}`);

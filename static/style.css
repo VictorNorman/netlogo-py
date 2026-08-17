@@ -104,6 +104,21 @@ body {
   gap: 8px;
 }
 
+.speed-widget {
+  padding: 6px 8px 4px;
+}
+
+.speed-widget input[type="range"] {
+  width: 100%;
+}
+
+.speed-label {
+  font-size: 11px;
+  color: #333;
+  text-align: center;
+  margin-top: 2px;
+}
+
 .nl-button {
   flex: 1;
   padding: 8px 4px;
