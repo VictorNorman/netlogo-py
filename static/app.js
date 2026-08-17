@@ -33,6 +33,7 @@ const WASM_CLASS_NAMES = {
   gaslab: null,
   ants: null,
   wolf_sheep: null,
+  virus_on_network: null,
 };
 
 let goInterval = null;
@@ -262,18 +263,33 @@ function drawPatches(state) {
   }
 }
 
-function drawTurtles(state) {
-  // Same "width"/"height" keys drawPatches() uses -- there's only ever one
-  // world size, so there's no need for a second world_width/world_height
-  // pair (an earlier version of this file had that duplication).
+// Shared by drawLinks()/drawTurtles(): world coordinates -> canvas pixels.
+// Both need this identically, so a link's endpoints line up exactly with
+// where its two turtles are actually drawn.
+function worldToCanvas(state, x, y) {
   const w = state.width;
   const h = state.height;
   const scaleX = canvas.width / w;
+  return [(x + w / 2) * scaleX, (1 - (y + h / 2) / h) * canvas.height];
+}
 
+function drawLinks(state) {
+  state.links.forEach(([x1, y1, x2, y2, color]) => {
+    const [px1, py1] = worldToCanvas(state, x1, y1);
+    const [px2, py2] = worldToCanvas(state, x2, y2);
+    ctx.strokeStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px1, py1);
+    ctx.lineTo(px2, py2);
+    ctx.stroke();
+  });
+}
+
+function drawTurtles(state) {
   state.turtles.forEach((t) => {
     const [x, y, heading, extra] = t;
-    const px = (x + w / 2) * scaleX;
-    const py = (1 - (y + h / 2) / h) * canvas.height;
+    const [px, py] = worldToCanvas(state, x, y);
     const rad = (heading * Math.PI) / 180;
 
     // NetLogo heading: 0 = up (screen -y), increases clockwise.
@@ -317,16 +333,20 @@ function drawState(state) {
     return;
   }
 
-  // Shape-driven, not a fixed per-model mode: Fire has only `colors`,
-  // Flocking has only `turtles`, GasLab/Ants have both and rely on
-  // drawPatches() painting every pixel first so drawTurtles() doesn't
-  // need to separately clear the canvas.
+  // Shape-driven, not a fixed per-model mode: only Fire omits `turtles`
+  // (it has real turtles but represents them purely by patch color); every
+  // other model has both `colors` and `turtles` (auto_state()'s defaults),
+  // relying on drawPatches() painting every pixel first so drawLinks()/
+  // drawTurtles() don't need to separately clear the canvas.
   if (!state.colors) {
     ctx.fillStyle = "black";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
   if (state.colors) {
     drawPatches(state);
+  }
+  if (state.links) {
+    drawLinks(state);
   }
   if (state.turtles) {
     drawTurtles(state);

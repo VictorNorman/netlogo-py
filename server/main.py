@@ -65,6 +65,7 @@ import models.flocking as flocking_module
 import models.gas_lab as gas_lab_module
 import models.ants as ants_module
 import models.wolf_sheep as wolf_sheep_module
+import models.virus_on_network as virus_module
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -320,6 +321,41 @@ MODEL_REGISTRY = {
             "vectorized": {
                 "module": wolf_sheep_module,
                 "source_file": "models/wolf_sheep.py",
+            },
+        },
+    },
+    "virus_on_network": {
+        "label": "Virus on a Network",
+        "render": "turtles_and_links",
+        "sliders": _sliders_from_module(virus_module),
+        "switches": _switches_from_module(virus_module),
+        "choosers": _choosers_from_module(virus_module),
+        "monitors": _monitors_from_module(virus_module),
+        "plot": _plot_from_module(virus_module),
+        "info": """
+            <h2>Virus on a Network</h2>
+            <p>
+              A Python port of NetLogo's classic <em>Virus on a Network</em>
+              model -- the first model in this app to use links. Nodes
+              (turtles) are susceptible (blue), infected (red), or resistant
+              (gray), connected by a randomly-built, spatially-clustered
+              network. Each tick, infected nodes may spread the virus to
+              their uninfected neighbors along a link, then periodically
+              check whether they recover (possibly gaining resistance) or
+              stay infected.
+            </p>
+            <p>
+              The network's layout is computed once during setup (a simple
+              force-directed <code>layout_spring</code>, added to
+              engine/netlogo.py for this port) -- turtles never move again
+              once <code>go</code> starts, so what you're watching is purely
+              color/link changes as the epidemic spreads across a fixed graph.
+            </p>
+        """,
+        "engines": {
+            "vectorized": {
+                "module": virus_module,
+                "source_file": "models/virus_on_network.py",
             },
         },
     },

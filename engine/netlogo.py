@@ -48,6 +48,7 @@ import sys
 # covers every other "shade of a named color" need generically via
 # ScaledColor, without requiring a full color-wheel numbering underneath.
 black = 0.0
+gray = 5.0
 green = 100.0
 red = 15.0
 white = -1.0
@@ -60,7 +61,9 @@ brown = 35.0
 
 _NAMED_RGB = {
     black: (0, 0, 0),
+    gray: (150, 150, 150),
     green: (0, 180, 0),
+    red: (220, 0, 0),
     white: (255, 255, 255),
     violet: (135, 55, 220),
     cyan: (0, 200, 200),
@@ -69,6 +72,11 @@ _NAMED_RGB = {
     yellow: (210, 210, 0),
     brown: (120, 80, 40),
 }
+
+# Bases that support "bare number arithmetic" shading (`set color red -
+# 0.3`, `set color gray - 2`) rather than going through scale_color() --
+# see color_to_rgb()'s fallback below.
+_SHADABLE_BASES = (red, gray)
 
 
 class ScaledColor:
@@ -123,18 +131,20 @@ def color_to_rgb(color):
         return _lerp_rgb(base_rgb, (255, 255, 255), (color.fraction - 0.5) * 2)
     if color in _NAMED_RGB:
         return _NAMED_RGB[color]
-    # Treat anything else as a shade of red: `red` (15) is pure/bright,
-    # `red - 5` is as dark as this model ever asks for (effectively black).
-    # Fire's the only model that still shades a color via bare arithmetic
-    # (`color - 0.3`, `color < red - 3.5`) rather than scale_color() --
-    # this fallback is what makes that arithmetic render sensibly.
-    brightness = max(0.0, min(1.0, (color - (red - 5)) / 5))
-    return (int(220 * brightness), 0, 0)
+    # Bare-number shading (`set color red - 0.3`, `set color gray - 2`,
+    # instead of going through scale_color()) -- picks whichever shadable
+    # base the number is closest to, then treats that base as the bright
+    # edge and `base - 5` as the dark edge, clamped to [0, 1] the same way
+    # this fallback always has.
+    base = min(_SHADABLE_BASES, key=lambda b: abs(color - b))
+    brightness = max(0.0, min(1.0, (color - (base - 5)) / 5))
+    return _lerp_rgb((0, 0, 0), _NAMED_RGB[base], brightness)
 
 
 # --- world state (module-level, singleton -- there is exactly one world) -
 _turtles = {}
 _patches = {}
+_links = {}  # (who1, who2) sorted tuple -> Link
 _who_counter = itertools.count()
 _ticks = 0
 _default_shapes = {}
@@ -378,6 +388,35 @@ class Turtle:
         px, py = round(self.xcor), round(self.ycor)
         return AgentSet(a for a in agents if round(a.xcor) == px and round(a.ycor) == py)
 
+    def create_link_with(self, other):
+        """NetLogo's `create-link-with`: an undirected link between this
+        turtle and `other`, if one doesn't already exist. Returns the
+        link."""
+        key = tuple(sorted((self.who, other.who)))
+        if key not in _links:
+            _links[key] = Link(self, other)
+        return _links[key]
+
+    def link_neighbor(self, other):
+        """NetLogo's `link-neighbor?`: is there a link between this turtle
+        and `other`?"""
+        return tuple(sorted((self.who, other.who))) in _links
+
+    def link_neighbors(self):
+        """NetLogo's `link-neighbors`: the other end of every link
+        touching this turtle."""
+        result = []
+        for link in _links.values():
+            if link.end1 is self:
+                result.append(link.end2)
+            elif link.end2 is self:
+                result.append(link.end1)
+        return AgentSet(result)
+
+    def my_links(self):
+        """NetLogo's `my-links`: every link touching this turtle."""
+        return AgentSet(l for l in _links.values() if l.end1 is self or l.end2 is self)
+
     def nearest(self, agents):
         """NetLogo's `min-one-of <agentset> [distance myself]`, specialized
         to the one thing min-one-of is used for in this port (finding the
@@ -468,8 +507,34 @@ class _AllPatches(LiveAgentSet):
         return iter(_patches.values())
 
 
+class _AllLinks(LiveAgentSet):
+    def __iter__(self):
+        return iter(_links.values())
+
+
 turtles = _AllTurtles()
 patches = _AllPatches()
+links = _AllLinks()
+
+
+class Link:
+    """A NetLogo link: an undirected connection between two turtles. Only
+    a single, unnamed link breed is supported -- no link-breed
+    declarations, no directed links, no tie/untie -- since no model built
+    against this runtime has needed more than that yet; see
+    Turtle.create_link_with()."""
+
+    def __init__(self, end1, end2):
+        self.end1 = end1
+        self.end2 = end2
+        self.color = white  # overwritten immediately by any model that creates links
+
+    def other_end(self, turtle):
+        """NetLogo's `other-end`."""
+        return self.end2 if turtle is self.end1 else self.end1
+
+    def __repr__(self):
+        return f"Link({self.end1.who}, {self.end2.who})"
 
 
 class Breed(LiveAgentSet):
@@ -606,6 +671,55 @@ def one_of(items):
     return _random.choice(items) if items else None
 
 
+def n_of(n, agents):
+    """NetLogo's `n-of`: n random DISTINCT agents from a list/agentset."""
+    return AgentSet(_random.sample(list(agents), n))
+
+
+def layout_spring(turtle_agents, link_agents, spring_constant, spring_length, repulsion_constant):
+    """NetLogo's `layout-spring`: one iteration of a force-directed layout
+    -- turtles repel each other, and each link pulls its two ends toward
+    being `spring_length` apart. This is cosmetic (used to prettify an
+    initial graph layout, not a simulation primitive with real behavior
+    riding on it -- see models/virus_on_network.py, which only calls this
+    a few times during setup), so this is a reasonable force-directed
+    layout, not a port of NetLogo's exact internal algorithm. Forces are
+    computed simultaneously from a position snapshot (like diffuse()
+    above), and each turtle's step is clamped and kept in world bounds so
+    it can't explode."""
+    turtle_list = list(turtle_agents)
+    forces = {t: [0.0, 0.0] for t in turtle_list}
+
+    for i, t1 in enumerate(turtle_list):
+        for t2 in turtle_list[i + 1 :]:
+            dx, dy = t1.xcor - t2.xcor, t1.ycor - t2.ycor
+            dist = max(0.1, math.hypot(dx, dy))
+            force = repulsion_constant / (dist * dist)
+            fx, fy = (dx / dist) * force, (dy / dist) * force
+            forces[t1][0] += fx
+            forces[t1][1] += fy
+            forces[t2][0] -= fx
+            forces[t2][1] -= fy
+
+    for link in link_agents:
+        t1, t2 = link.end1, link.end2
+        if t1 not in forces or t2 not in forces:
+            continue
+        dx, dy = t2.xcor - t1.xcor, t2.ycor - t1.ycor
+        dist = max(0.1, math.hypot(dx, dy))
+        force = (dist - spring_length) * spring_constant
+        fx, fy = (dx / dist) * force, (dy / dist) * force
+        forces[t1][0] += fx
+        forces[t1][1] += fy
+        forces[t2][0] -= fx
+        forces[t2][1] -= fy
+
+    for t in turtle_list:
+        fx, fy = forces[t]
+        t.xcor = max(_min_pxcor, min(_max_pxcor, t.xcor + max(-0.5, min(0.5, fx))))
+        t.ycor = max(_min_pycor, min(_max_pycor, t.ycor + max(-0.5, min(0.5, fy))))
+
+
 def tick():
     """NetLogo's `tick` (command): advance the counter by one."""
     global _ticks
@@ -645,9 +759,9 @@ def stop():
 
 
 def clear_all():
-    """NetLogo's `clear-all`: wipes every turtle, rebuilds the patch grid
-    at the world's current size (see resize_world()), and clears every
-    plot pen's history (real NetLogo's `clear-all` includes
+    """NetLogo's `clear-all`: wipes every turtle and link, rebuilds the
+    patch grid at the world's current size (see resize_world()), and
+    clears every plot pen's history (real NetLogo's `clear-all` includes
     `clear-all-plots`)."""
     global _turtles, _patches, _ticks, _running
     _turtles = {}
@@ -656,6 +770,7 @@ def clear_all():
     }
     _ticks = 0
     _running = True
+    _links.clear()
     _plot_pens.clear()
 
 
@@ -857,6 +972,21 @@ def turtles_grid(color_fn=None):
     return [[t.xcor, t.ycor, t.heading, color_fn(t)] for t in turtles]
 
 
+def _default_link_color(link):
+    return list(color_to_rgb(link.color))
+
+
+def links_grid(color_fn=None):
+    """The current links as a list of [x1, y1, x2, y2, extra] rows -- what
+    state() hands the frontend as "links". Self-contained (both endpoints'
+    coordinates inline) so drawLinks() (static/app.js) never needs to
+    cross-reference turtle positions by identity. `color_fn`, if given, is
+    a plain function taking a link and returning its `extra` value -- the
+    default is the link's real color (color_to_rgb(link.color))."""
+    color_fn = color_fn or _default_link_color
+    return [[l.end1.xcor, l.end1.ycor, l.end2.xcor, l.end2.ycor, color_fn(l)] for l in links]
+
+
 def _resolve_widget_value(ns, name):
     """Shared by auto_state(): a slider/switch/chooser/monitor's current
     value is whatever `name` points to in the model's own namespace,
@@ -870,13 +1000,22 @@ def _resolve_widget_value(ns, name):
     return value() if callable(value) else value
 
 
-def auto_state(module=None, patches=True, turtles=True, patch_color=None, turtle_color=None, extra=None):
+def auto_state(
+    module=None,
+    patches=True,
+    turtles=True,
+    links=True,
+    patch_color=None,
+    turtle_color=None,
+    link_color=None,
+    extra=None,
+):
     """Builds a model's entire state() dict automatically -- the one JSON
     shape this app's frontend expects every tick -- from its already-
     declared widgets (slider()/switch()/chooser()/monitor()/plot_widget())
-    plus its live patches/turtles. See the note above this function for
-    when a model needs to call this itself instead of skipping state()
-    entirely, e.g.:
+    plus its live patches/turtles/links. See the note above this function
+    for when a model needs to call this itself instead of skipping
+    state() entirely, e.g.:
         def state():
             return auto_state(turtles=False)                 # Fire
             return auto_state(patch_color=my_patch_color)     # Ants
@@ -887,8 +1026,13 @@ def auto_state(module=None, patches=True, turtles=True, patch_color=None, turtle
     _ModuleAdapter); a model calling auto_state() from within its own
     state() doesn't pass this, since it's found automatically from the
     caller's own globals.
-    `patches`/`turtles`: whether to include the "colors"/"turtles" keys.
-    `patch_color`/`turtle_color`: see patches_grid()/turtles_grid().
+    `patches`/`turtles`/`links`: whether to include the "colors"/
+    "turtles"/"links" keys -- `links` defaults to True same as the other
+    two, so a model that never creates a link just gets an empty list,
+    same spirit as always including "colors" even for a model (Flocking)
+    whose patches never change.
+    `patch_color`/`turtle_color`/`link_color`: see patches_grid()/
+    turtles_grid()/links_grid().
     `extra`: a plain dict of any further state() keys a model computes
     itself, merged in last (so it can override anything above too)."""
     if module is None:
@@ -914,6 +1058,8 @@ def auto_state(module=None, patches=True, turtles=True, patch_color=None, turtle
 
     if patches:
         result["colors"] = patches_grid(patch_color)
+    if links:
+        result["links"] = links_grid(link_color)
     if turtles:
         result["turtles"] = turtles_grid(turtle_color)
 

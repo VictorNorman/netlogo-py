@@ -2,7 +2,7 @@
 
 A Python runtime for [NetLogo](https://ccl.northwestern.edu/netlogo/)-style agent-based models, plus a small FastAPI server and a zero-build browser frontend to run and watch them — either on the server or **entirely inside the browser** via [Pyodide](https://pyodide.org/) (CPython compiled to WebAssembly), with the model's source live-editable and re-runnable without a page reload.
 
-Five classic NetLogo Sample Models are ported so far — **Fire**, **Flocking**, **GasLab**, **Ants**, and **Wolf Sheep Predation** — each checked against its real `.nlogox` source line by line, not reimplemented from memory.
+Six classic NetLogo Sample Models are ported so far — **Fire**, **Flocking**, **GasLab**, **Ants**, **Wolf Sheep Predation**, and **Virus on a Network** — each checked against its real `.nlogox` source line by line, not reimplemented from memory.
 
 ```
 python -m uvicorn server.main:app --reload --port 8765
@@ -10,7 +10,7 @@ python -m uvicorn server.main:app --reload --port 8765
 
 Then open `http://localhost:8765`, pick a model, hit **setup** then **go**.
 
-## The five models
+## The six models
 
 | Model | What it shows | Real source |
 |---|---|---|
@@ -19,6 +19,7 @@ Then open `http://localhost:8765`, pick a model, hit **setup** then **go**.
 | **GasLab** | Molecular dynamics: elastic, mass-aware particle collisions in a walled box, with an adaptive timestep so fast particles never tunnel through a wall. Kinetic energy is conserved exactly while the speed distribution spreads out. | `Sample Models/Chemistry & Physics/GasLab/GasLab Gas in a Box.nlogox` |
 | **Ants** | Stigmergy: ants lay a pheromone trail while carrying food home, and other ants follow the gradient — a decentralized shortest-path search. | `Sample Models/Biology/Ants.nlogox` |
 | **Wolf Sheep Predation** | Predator-prey population dynamics (Lotka-Volterra-style oscillation) in an optional grass-scarcity variant. | `Sample Models/Biology/Wolf Sheep Predation.nlogox` |
+| **Virus on a Network** | SIR epidemic spread over a social-network graph — the first model here to use links, connecting nodes drawn as circles with lines. | `Sample Models/Networks/Virus on a Network.nlogox` |
 
 Every model documents its own deliberate deviations from the real source in its module docstring (an explicit boolean instead of color-encoded turtle state, a simplified color model, app-specific monitors like Flocking's `order_parameter`, etc.) — nothing is silently dropped.
 
@@ -35,7 +36,7 @@ Switching the engine dropdown swaps the transport; the rendering code (`drawPatc
 
 ```
 engine/netlogo.py     the runtime: primitives, world state, widget system, auto_state()
-models/*.py           five ported models
+models/*.py           six ported models
 server/main.py        FastAPI app: model registry + HTTP API + static file serving
 static/               zero-build frontend: index.html, app.js, style.css, pyodide-worker.js
 ```
@@ -45,16 +46,19 @@ static/               zero-build frontend: index.html, app.js, style.css, pyodid
 One module, ~900 lines, no external dependencies. It gives every model:
 
 **World & agents**
-`resize_world`, `set_wrap`, `min_pxcor`/`max_pxcor`/`min_pycor`/`max_pycor`, `patch_at`, `clear_all`, `Patch` (`.pcolor`, `.neighbors4()`/`.neighbors8()`, `.distance_to_xy()`), `Turtle` (`.xcor`/`.ycor`/`.heading`/`.color`, `.forward()`/`.right()`/`.left()`, `.patch_here()`/`.patch_ahead()`/`.patch_left_and_ahead()`/`.patch_right_and_ahead()`, `.distance_to()`/`.towards()`/`.in_radius()`/`.other()`/`.here()`/`.nearest()`, `.hatch()`, `.die()`), `turtles`/`patches` (live agentsets), `create_breed`, `create_turtles`, `ask`, `.where(**kwargs)` (NetLogo's `with`), ` .count()`/`.any()`.
+`resize_world`, `set_wrap`, `min_pxcor`/`max_pxcor`/`min_pycor`/`max_pycor`, `patch_at`, `clear_all`, `Patch` (`.pcolor`, `.neighbors4()`/`.neighbors8()`, `.distance_to_xy()`), `Turtle` (`.xcor`/`.ycor`/`.heading`/`.color`, `.forward()`/`.right()`/`.left()`, `.patch_here()`/`.patch_ahead()`/`.patch_left_and_ahead()`/`.patch_right_and_ahead()`, `.distance_to()`/`.towards()`/`.in_radius()`/`.other()`/`.here()`/`.nearest()`, `.hatch()`, `.die()`), `turtles`/`patches`/`links` (live agentsets), `create_breed`, `create_turtles`, `ask`, `.where(**kwargs)` (NetLogo's `with`), `.count()`/`.any()`.
+
+**Links**
+`Link` (`.end1`/`.end2`/`.color`, `.other_end()`), `Turtle.create_link_with()`/`.link_neighbor()`/`.link_neighbors()`/`.my_links()`, `layout_spring(turtles, links, spring_constant, spring_length, repulsion_constant)` (a one-time, cosmetic force-directed layout — see Virus on a Network). Only a single, unnamed undirected link breed is supported so far — no link-breed declarations, no directed links, no `tie`/`untie`.
 
 **Math & randomness**
-`sin`/`cos`/`atan` (degrees, matching NetLogo), `subtract_headings`, `mean`, `ceiling`/`floor`, `random`/`random_float`/`one_of`, `random_xcor`/`random_ycor`.
+`sin`/`cos`/`atan` (degrees, matching NetLogo), `subtract_headings`, `mean`, `ceiling`/`floor`, `random`/`random_float`/`one_of`/`n_of`, `random_xcor`/`random_ycor`.
 
 **Time**
 `tick`/`tick_advance`/`ticks`/`reset_ticks`, `stop`.
 
 **Color**
-Named colors as plain floats (`black`, `green`, `red`, `white`, `violet`, `cyan`, `sky`, `blue`, `yellow`, `brown`) with a small RGB table, `scale_color(base, number, low, high)` (NetLogo's `scale-color`, producing a genuine black→base→white gradient for *any* named color, not just a hardcoded one), and `color_to_rgb` for rendering.
+Named colors as plain floats (`black`, `gray`, `green`, `red`, `white`, `violet`, `cyan`, `sky`, `blue`, `yellow`, `brown`) with a small RGB table, `scale_color(base, number, low, high)` (NetLogo's `scale-color`, producing a genuine black→base→white gradient for *any* named color, not just a hardcoded one), and `color_to_rgb` for rendering.
 
 **Diffusion**
 `diffuse(attr_name, rate)` — a real 8-neighbor grid convolution over any patches-own attribute (NetLogo's `diffuse`).
@@ -63,7 +67,7 @@ Named colors as plain floats (`black`, `green`, `red`, `white`, `violet`, `cyan`
 `slider`, `switch`, `chooser`, `monitor`, `button`, `plot_widget`/`plot`/`plotxy` — each is a plain function call at module load time that both returns the widget's default value *and* registers its metadata, so the model file is simultaneously the model and its own UI declaration. No separate spec to keep in sync.
 
 **`auto_state()`**
-NetLogo's own IDE never makes you write a serialization function — it just inspects turtles/patches/plots directly to render them. `state()` only exists in this app because it needs one JSON snapshot per tick; `auto_state()` builds that snapshot automatically by reading whatever a model has already declared (every slider/switch/chooser value, every monitor — resolved by calling it if it's a function, else using it directly — the patch/turtle grids, plot data). Three of the five models don't define `state()` at all; the other two override just the one or two things `auto_state()` can't guess (Ants' chemical-gradient patch coloring, Fire suppressing turtles it has but doesn't want drawn).
+NetLogo's own IDE never makes you write a serialization function — it just inspects turtles/patches/links/plots directly to render them. `state()` only exists in this app because it needs one JSON snapshot per tick; `auto_state()` builds that snapshot automatically by reading whatever a model has already declared (every slider/switch/chooser value, every monitor — resolved by calling it if it's a function, else using it directly — the patch/turtle/link grids, plot data). Four of the six models don't define `state()` at all; the other two override just the one or two things `auto_state()` can't guess (Ants' chemical-gradient patch coloring, Fire suppressing turtles it has but doesn't want drawn).
 
 ### Widget system → automatic UI
 
@@ -120,6 +124,7 @@ All endpoints are relative to the running server (default `http://localhost:8765
   "<monitor_key>": 12.5,                 // every declared monitor's current value
   "plot_data": {"sheep": [[0, 100], [1, 98], ...]},  // present only if the model declares a plot
   "colors": [[[r,g,b], ...], ...],       // present only if the model has patches to draw
+  "links": [[x1, y1, x2, y2, [r,g,b]], ...],  // present only if the model has links to draw
   "turtles": [[xcor, ycor, heading, extra], ...],  // present only if the model has turtles to draw;
                                           // `extra` is a [r,g,b] real color, a 0/1 flag (e.g. Ants'
                                           // carrying-food state), or absent (draw a plain default color)
@@ -146,4 +151,4 @@ Open `http://localhost:8765`. No build step, no bundler — `static/*.js`/`*.css
 
 ## Attribution
 
-The five models here are Python ports of designs from NetLogo's own Sample Models library (Uri Wilensky and the CCL, Northwestern University; individual model copyrights are noted in each `.nlogox` file). This repository is an independent educational reimplementation of their *behavior* in a from-scratch Python runtime — it does not include or depend on NetLogo itself.
+The six models here are Python ports of designs from NetLogo's own Sample Models library (Uri Wilensky and the CCL, Northwestern University; individual model copyrights are noted in each `.nlogox` file). This repository is an independent educational reimplementation of their *behavior* in a from-scratch Python runtime — it does not include or depend on NetLogo itself.
