@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>NetLogo.py</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="titlebar">
+    <span class="titlebar-text">NetLogo.py</span>
+    <div class="model-menu">
+      <label for="engine-select">Engine:</label>
+      <select id="engine-select"></select>
+      <label for="model-select">Model:</label>
+      <select id="model-select"></select>
+    </div>
+  </div>
+
+  <div class="tabbar">
+    <button class="tab active" data-tab="interface">Interface</button>
+    <button class="tab" data-tab="info">Info</button>
+    <button class="tab" data-tab="code">Code</button>
+  </div>
+
+  <div class="panel" id="panel-interface">
+    <div class="interface-layout">
+      <div class="controls-column">
+        <div class="widget-group buttons-row">
+          <button id="btn-setup" class="nl-button">setup</button>
+          <button id="btn-go" class="nl-button">go</button>
+        </div>
+
+        <div id="sliders-container"></div>
+        <div id="monitors-container"></div>
+        <div id="plot-container" class="widget plot-widget hidden">
+          <div class="widget-label" id="plot-title"></div>
+          <canvas id="plot-canvas" width="230" height="140"></canvas>
+          <div class="plot-legend" id="plot-legend"></div>
+        </div>
+      </div>
+
+      <div class="world-column">
+        <canvas id="world-canvas" width="600" height="600"></canvas>
+      </div>
+    </div>
+
+    <div class="command-center">
+      <div class="command-output" id="command-output"></div>
+      <div class="command-input-row">
+        <span class="command-prompt">observer&gt;</span>
+        <input type="text" id="command-input" autocomplete="off" spellcheck="false" />
+      </div>
+    </div>
+  </div>
+
+  <div class="panel hidden" id="panel-info">
+    <div class="info-text" id="info-text"></div>
+  </div>
+
+  <div class="panel hidden" id="panel-code">
+    <pre class="code-view" id="code-view">loading…</pre>
+    <div class="code-editor-wrap hidden" id="code-editor-wrap">
+      <textarea class="code-editor" id="code-editor" spellcheck="false"></textarea>
+      <div class="code-editor-actions">
+        <button id="btn-run-script" class="nl-button">Run (recompile)</button>
+        <span class="code-editor-hint">
+          Runs entirely in your browser via Pyodide (WASM Python) — edit the model above, then click Run.
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

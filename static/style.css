@@ -1,0 +1,328 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: #d9d9d9;
+  color: #000;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.titlebar {
+  background: #4a6d9c;
+  color: white;
+  font-weight: bold;
+  padding: 6px 10px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.model-menu {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: normal;
+  font-size: 12px;
+}
+
+.model-menu select {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  border: 1px solid #888;
+  background: #f0f0f0;
+}
+
+.tabbar {
+  display: flex;
+  background: #b8b8b8;
+  border-bottom: 1px solid #888;
+}
+
+.tab {
+  border: none;
+  border-right: 1px solid #999;
+  background: #c8c8c8;
+  padding: 6px 18px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.tab.active {
+  background: #eaeaea;
+  font-weight: bold;
+}
+
+.panel {
+  padding: 12px;
+}
+
+.panel.hidden {
+  display: none;
+}
+
+.hidden {
+  display: none;
+}
+
+.interface-layout {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.controls-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 230px;
+}
+
+#sliders-container,
+#monitors-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.widget {
+  background: #e6e6e6;
+  border: 1px solid #999;
+  border-radius: 3px;
+  padding: 8px;
+}
+
+.widget-group.buttons-row {
+  display: flex;
+  gap: 8px;
+}
+
+.nl-button {
+  flex: 1;
+  padding: 8px 4px;
+  background: linear-gradient(#fdfdfd, #d4d4d4);
+  border: 1px solid #888;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.nl-button:active {
+  background: linear-gradient(#c8c8c8, #e2e2e2);
+}
+
+.nl-button.running {
+  background: linear-gradient(#ffd9d9, #ffb3b3);
+  border-color: #a33;
+}
+
+.widget-label {
+  font-size: 11px;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.slider-row input[type="range"] {
+  flex: 1;
+}
+
+.slider-value {
+  font-family: monospace;
+  font-size: 12px;
+  width: 32px;
+  text-align: right;
+}
+
+.monitor-value {
+  font-family: "Courier New", monospace;
+  font-size: 20px;
+  text-align: center;
+  background: white;
+  border: 1px inset #999;
+  padding: 4px 0;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.switch-row .widget-label {
+  margin-bottom: 0;
+}
+
+.chooser-widget select {
+  width: 100%;
+  padding: 4px;
+  font-size: 12px;
+  border: 1px inset #999;
+  background: white;
+}
+
+.plot-widget canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: white;
+  border: 1px inset #999;
+}
+
+.plot-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: #333;
+}
+
+.plot-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.plot-legend-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+}
+
+.world-column {
+  background: #000;
+  border: 2px solid #666;
+  padding: 4px;
+  line-height: 0;
+}
+
+#world-canvas {
+  display: block;
+  background: black;
+  image-rendering: pixelated;
+}
+
+.command-center {
+  margin-top: 14px;
+  border: 1px solid #999;
+  background: #f4f4f4;
+  border-radius: 3px;
+  padding: 6px;
+}
+
+.command-output {
+  height: 90px;
+  overflow-y: auto;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+
+.command-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.command-prompt {
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  color: #333;
+}
+
+#command-input {
+  flex: 1;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  border: 1px inset #999;
+  padding: 3px 5px;
+}
+
+.info-text {
+  max-width: 640px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.code-view {
+  background: #1e1e1e;
+  color: #dcdcdc;
+  padding: 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  overflow-x: auto;
+  max-width: 900px;
+}
+
+/* #panel-code (Code tab) stretches to fill the viewport below the
+   titlebar/tabbar (body is a flex column, see body{} above) so the WASM
+   editor can fill the available height instead of being capped at an
+   arbitrary pixel size; :not(.hidden) keeps this from fighting
+   .panel.hidden's display:none when another tab is active. */
+#panel-code:not(.hidden) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.code-editor-wrap:not(.hidden) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.code-editor {
+  width: 100%;
+  max-width: 900px;
+  flex: 1;
+  min-height: 200px;
+  background: #1e1e1e;
+  color: #dcdcdc;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 12px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  resize: vertical;
+  white-space: pre;
+}
+
+.code-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  flex: none;
+  max-width: 900px;
+}
+
+.code-editor-actions .nl-button {
+  flex: none;
+  padding: 8px 16px;
+}
+
+.code-editor-hint {
+  font-size: 12px;
+  color: #555;
+}

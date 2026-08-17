@@ -1,0 +1,171 @@
+# NetLogo.py
+
+A from-scratch, **class-less** Python runtime for [NetLogo](https://ccl.northwestern.edu/netlogo/)-style agent-based models, plus a small FastAPI server and a zero-build browser frontend to run and watch them — either on the server or **entirely inside the browser** via [Pyodide](https://pyodide.org/) (CPython compiled to WebAssembly), with the model's source live-editable and re-runnable without a page reload.
+
+Five classic NetLogo Sample Models are ported so far — **Fire**, **Flocking**, **GasLab**, **Ants**, and **Wolf Sheep Predation** — each checked against its real `.nlogox` source line by line, not reimplemented from memory.
+
+```
+python -m uvicorn server.main:app --reload --port 8765
+```
+
+Then open `http://localhost:8765`, pick a model, hit **setup** then **go**.
+
+## Why "class-less"?
+
+NetLogo itself has no classes. A model is just a handful of `to setup` / `to go` procedures operating on one shared, ambient world — turtles, patches, and globals that any procedure can touch directly. Most ABM frameworks translate this into an `Agent`/`World`/`Model` class hierarchy, which reads nothing like the NetLogo code it's porting.
+
+This project goes the other way: `engine/netlogo.py` is a single module of free functions and one shared piece of module-level state (there's only ever one world), and each model file is a plain Python module — `setup()`, `go()`, `is_running()` as top-level functions, sliders and breeds as top-level assignments — that reads as close to the real `.nlogox` source as Python syntax allows. No model file defines a class. Compare:
+
+```netlogo
+to setup
+  clear-all
+  ask patches [ set pcolor one-of color-list ]
+  reset-ticks
+end
+```
+
+```python
+def setup():
+    clear_all()
+    for p in ask(patches):
+        p.pcolor = one_of(color_list)
+    reset_ticks()
+```
+
+## The five models
+
+| Model | What it shows | Real source |
+|---|---|---|
+| **Fire** | A percolation threshold: below a critical tree density a fire dies out quickly; above it, it engulfs the forest. | `Sample Models/Earth Science/Fire.nlogox` |
+| **Flocking** | Boids — three simple per-turtle rules (separate / align / cohere) producing emergent flocking. | `Sample Models/Biology/Flocking.nlogox` |
+| **GasLab** | Molecular dynamics: elastic, mass-aware particle collisions in a walled box, with an adaptive timestep so fast particles never tunnel through a wall. Kinetic energy is conserved exactly while the speed distribution spreads out. | `Sample Models/Chemistry & Physics/GasLab/GasLab Gas in a Box.nlogox` |
+| **Ants** | Stigmergy: ants lay a pheromone trail while carrying food home, and other ants follow the gradient — a decentralized shortest-path search. | `Sample Models/Biology/Ants.nlogox` |
+| **Wolf Sheep Predation** | Predator-prey population dynamics (Lotka-Volterra-style oscillation) in an optional grass-scarcity variant. | `Sample Models/Biology/Wolf Sheep Predation.nlogox` |
+
+Every model documents its own deliberate deviations from the real source in its module docstring (an explicit boolean instead of color-encoded turtle state, a simplified color model, app-specific monitors like Flocking's `order_parameter`, etc.) — nothing is silently dropped.
+
+## Two engines, one model source
+
+The **same** model files run two ways:
+
+- **Server** — the FastAPI app in `server/main.py` runs the model in the Python process and the browser polls `/api/step` roughly every 60ms.
+- **WASM (browser)** — `static/pyodide-worker.js` runs a full CPython interpreter in a Web Worker via Pyodide, fetches the model's source as plain text, and `exec()`s it directly. Every tick runs client-side with zero network round-trips, and the **Code** tab lets you edit the running model's source and hit Run to see the change immediately — no rebuild, no reload, the same "edit and go" workflow NetLogo itself has.
+
+Switching the engine dropdown swaps the transport; the rendering code (`drawPatches`/`drawTurtles`/`drawPlot` in `static/app.js`) doesn't know or care which engine produced the state it's drawing.
+
+## Architecture
+
+```
+engine/netlogo.py   the runtime: primitives, world state, widget system, auto_state()
+models/*.py          five model files, each a plain module (no classes)
+server/main.py       FastAPI app: model registry + HTTP API + static file serving
+static/               zero-build frontend: index.html, app.js, style.css, pyodide-worker.js
+```
+
+### `engine/netlogo.py` — the runtime
+
+One module, ~900 lines, no external dependencies. It gives every model:
+
+**World & agents**
+`resize_world`, `set_wrap`, `min_pxcor`/`max_pxcor`/`min_pycor`/`max_pycor`, `patch_at`, `clear_all`, `Patch` (`.pcolor`, `.neighbors4()`/`.neighbors8()`, `.distance_to_xy()`), `Turtle` (`.xcor`/`.ycor`/`.heading`/`.color`, `.forward()`/`.right()`/`.left()`, `.patch_here()`/`.patch_ahead()`/`.patch_left_and_ahead()`/`.patch_right_and_ahead()`, `.distance_to()`/`.towards()`/`.in_radius()`/`.other()`/`.here()`/`.nearest()`, `.hatch()`, `.die()`), `turtles`/`patches` (live agentsets), `create_breed`, `create_turtles`, `ask`, `.where(**kwargs)` (NetLogo's `with`), ` .count()`/`.any()`.
+
+**Math & randomness**
+`sin`/`cos`/`atan` (degrees, matching NetLogo), `subtract_headings`, `mean`, `ceiling`/`floor`, `random`/`random_float`/`one_of`, `random_xcor`/`random_ycor`.
+
+**Time**
+`tick`/`tick_advance`/`ticks`/`reset_ticks`, `stop`.
+
+**Color**
+Named colors as plain floats (`black`, `green`, `red`, `white`, `violet`, `cyan`, `sky`, `blue`, `yellow`, `brown`) with a small RGB table, `scale_color(base, number, low, high)` (NetLogo's `scale-color`, producing a genuine black→base→white gradient for *any* named color, not just a hardcoded one), and `color_to_rgb` for rendering.
+
+**Diffusion**
+`diffuse(attr_name, rate)` — a real 8-neighbor grid convolution over any patches-own attribute (NetLogo's `diffuse`).
+
+**Widgets**
+`slider`, `switch`, `chooser`, `monitor`, `button`, `plot_widget`/`plot`/`plotxy` — each is a plain function call at module load time that both returns the widget's default value *and* registers its metadata, so the model file is simultaneously the model and its own UI declaration. No separate spec to keep in sync.
+
+**`auto_state()`**
+NetLogo's own IDE never makes you write a serialization function — it just inspects turtles/patches/plots directly to render them. `state()` only exists in this app because it needs one JSON snapshot per tick; `auto_state()` builds that snapshot automatically by reading whatever a model has already declared (every slider/switch/chooser value, every monitor — resolved by calling it if it's a function, else using it directly — the patch/turtle grids, plot data). Three of the five models don't define `state()` at all; the other two override just the one or two things `auto_state()` can't guess (Ants' chemical-gradient patch coloring, Fire suppressing turtles it has but doesn't want drawn).
+
+### Widget system → automatic UI
+
+A model declares its own controls inline, at the top of the file, the same way NetLogo widgets sit on the model's Interface tab:
+
+```python
+population = slider("population", default=300, min=1, max=1000, step=1)
+show_energy = switch("show_energy", default=False, label="show-energy?")
+model_version = chooser("model_version", ["sheep-wolves", "sheep-wolves-grass"])
+monitor("order_parameter", "order parameter")
+plot_widget("populations", x_label="time", y_label="pop.", pens=[("sheep", "#f2c14e"), ("wolves", "#3a5a9c")])
+```
+
+`server/main.py` never hand-maintains a duplicate slider/monitor list — it reads each model's `__widgets__` (built as a side effect of the calls above) and the frontend renders sliders, switches, dropdowns, monitors, and a live line-chart plot purely from that, for whichever model is active.
+
+## The HTTP API
+
+All endpoints are relative to the running server (default `http://localhost:8765`). Every mutating endpoint returns the full current state (see **State shape** below) plus a `running: bool` flag.
+
+| Method & path | Body | Returns |
+|---|---|---|
+| `GET /` | — | the frontend (`static/index.html`) |
+| `GET /api/models` | — | the full model registry: for every model, its label, render mode, and every slider/switch/chooser/monitor/plot spec (see below) |
+| `POST /api/select-model` | `{"model": "wolf_sheep"}` | state after switching to that model and calling `setup()` |
+| `POST /api/select-engine` | `{"engine": "vectorized"}` | state after switching engines (`"vectorized"` \| `"wasm"` — `wasm` is client-only, see below) |
+| `GET /api/model-source?model=ants&engine=vectorized` | — | `{"source": "<the model's .py file as text>"}` — powers the Code tab and the WASM engine's bootstrap |
+| `GET /api/state` | — | the current state, without advancing |
+| `POST /api/setup` | `{"<slider_name>": <value>, ...}` | applies each given value via `setattr`, calls `setup()`, returns state |
+| `POST /api/step` | — | calls `go()` once, returns state |
+| `POST /api/command` | `{"text": "go"}` \| `{"text": "set population 50"}` | a tiny observer command line: `setup`, `go`, or `set <param> <value>` |
+| `GET /py/engine/*` | — | raw text of `engine/*.py`, fetched by the in-browser WASM worker so it can bootstrap the same runtime client-side |
+
+**Model spec** (one entry of `/api/models`'s `"models"` list):
+```jsonc
+{
+  "key": "wolf_sheep",
+  "label": "Wolf Sheep Predation",
+  "render": "patches_and_turtles",       // documentation only — the frontend infers this from which keys state() actually returns
+  "sliders":  [{"name": "...", "label": "...", "default": 0, "min": 0, "max": 0, "step": 0, "units": "..."}],
+  "switches": [{"name": "...", "label": "...", "default": true}],
+  "choosers": [{"name": "...", "label": "...", "options": ["..."], "default": "..."}],
+  "monitors": [{"key": "...", "label": "..."}],
+  "plot": {"title": "...", "x_label": "...", "y_label": "...", "pens": [{"name": "...", "color": "#..."}]} ,  // or null
+  "info": "<h2>...</h2>..."               // HTML description, shown in the Info tab
+}
+```
+
+**State shape** (every mutating endpoint's response, model-dependent):
+```jsonc
+{
+  "tick": 42,
+  "width": 51, "height": 51,             // world size in patches
+  "<slider_name>": 100,                  // every declared slider/switch/chooser, echoed back
+  "<monitor_key>": 12.5,                 // every declared monitor's current value
+  "plot_data": {"sheep": [[0, 100], [1, 98], ...]},  // present only if the model declares a plot
+  "colors": [[[r,g,b], ...], ...],       // present only if the model has patches to draw
+  "turtles": [[xcor, ycor, heading, extra], ...],  // present only if the model has turtles to draw;
+                                          // `extra` is a [r,g,b] real color, a 0/1 flag (e.g. Ants'
+                                          // carrying-food state), or absent (draw a plain default color)
+  "running": true
+}
+```
+
+## Running it
+
+```bash
+pip install -r requirements.txt
+python -m uvicorn server.main:app --reload --port 8765
+```
+
+Open `http://localhost:8765`. No build step, no bundler — `static/*.js`/`*.css`/`*.html` are served as-is. The first time you switch to the **WASM** engine it downloads Pyodide (~20MB, cached by the browser after that) into a Web Worker; every model runs identically on both engines.
+
+## Adding a new model
+
+1. Find the model's real `.nlogox` source (NetLogo ships a large Sample Models library) and read its `to setup`/`to go` code and `<widgets>` section.
+2. Write `models/your_model.py`: `from engine.netlogo import *`, declare breeds/sliders/switches/monitors/a plot at the top, then `setup()`/`go()`/`is_running()` as free functions that read like a direct transliteration of the NetLogo procedures.
+3. Only write your own `state()` if `auto_state()` can't guess something (custom patch/turtle coloring, or suppressing a rendered layer) — most models don't need one.
+4. Register it in `server/main.py`'s `MODEL_REGISTRY` (a `"module"` entry plus an `"info"` blurb) — sliders/switches/choosers/monitors/plot are all pulled from the module automatically.
+5. Test standalone first (`python -c "import models.your_model as m; m.setup(); ..."`), then through the server, then through the WASM engine.
+
+## Attribution
+
+The five models here are Python ports of designs from NetLogo's own Sample Models library (Uri Wilensky and the CCL, Northwestern University; individual model copyrights are noted in each `.nlogox` file). This repository is an independent educational reimplementation of their *behavior* in a from-scratch Python runtime — it does not include or depend on NetLogo itself.
