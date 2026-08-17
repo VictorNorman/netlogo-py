@@ -38,6 +38,8 @@ const WASM_CLASS_NAMES = {
   virus_on_network: null,
   life: null,
   sierpinski: null,
+  preferential_attachment: null,
+  rock_paper_scissors: null,
 };
 
 // Not a plain setInterval: doStep() is an async network round-trip, and a
@@ -215,6 +217,13 @@ function minMax(values) {
   return [min, max];
 }
 
+// A "bar" pen's own x-values are bin left edges (histogram(), see
+// engine/netlogo.py) all the same width apart -- inferred from the first
+// two points, since the data itself doesn't carry the width along.
+function penBarWidth(points) {
+  return points.length > 1 ? points[1][0] - points[0][0] : 1;
+}
+
 function drawPlot(plotData, plotSpec) {
   if (!plotSpec) {
     return;
@@ -225,8 +234,13 @@ function drawPlot(plotData, plotSpec) {
   const xs = [];
   const ys = [];
   plotSpec.pens.forEach((pen) => {
-    (plotData[pen.name] || []).forEach(([x, y]) => {
+    const points = plotData[pen.name] || [];
+    const barWidth = pen.mode === "bar" ? penBarWidth(points) : 0;
+    points.forEach(([x, y]) => {
       xs.push(x);
+      if (barWidth) {
+        xs.push(x + barWidth); // so the last bar's right edge isn't clipped
+      }
       ys.push(y);
     });
   });
@@ -249,6 +263,18 @@ function drawPlot(plotData, plotSpec) {
     if (!points || points.length === 0) {
       return;
     }
+
+    if (pen.mode === "bar") {
+      const barWidth = penBarWidth(points);
+      plotCtx.fillStyle = pen.color;
+      points.forEach(([x, y]) => {
+        const [px1, py1] = toPx(x, y);
+        const [px2, py2] = toPx(x + barWidth, 0);
+        plotCtx.fillRect(Math.min(px1, px2), Math.min(py1, py2), Math.abs(px2 - px1), Math.abs(py2 - py1));
+      });
+      return;
+    }
+
     plotCtx.strokeStyle = pen.color;
     plotCtx.lineWidth = 1.5;
     plotCtx.beginPath();

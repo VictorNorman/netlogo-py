@@ -250,19 +250,22 @@ class Patch:
 
     def neighbors4(self):
         """NetLogo's `neighbors4`: the (up to 4) orthogonally-adjacent
-        patches that exist -- fewer at a non-wrapping world's edge."""
+        patches that exist -- wraps around the torus if the world wraps
+        (see _neighbor_patch() below); fewer than 4 only at a
+        non-wrapping world's edge."""
         deltas = ((1, 0), (-1, 0), (0, 1), (0, -1))
-        found = (_patches.get((self.pxcor + dx, self.pycor + dy)) for dx, dy in deltas)
+        found = (_neighbor_patch(self.pxcor, self.pycor, dx, dy) for dx, dy in deltas)
         return AgentSet(p for p in found if p is not None)
 
     def neighbors8(self):
-        """NetLogo's `neighbors` (8 neighbors, including diagonals)."""
+        """NetLogo's `neighbors` (8 neighbors, including diagonals) --
+        wraps around the torus if the world wraps."""
         found = []
         for dx in (-1, 0, 1):
             for dy in (-1, 0, 1):
                 if dx == 0 and dy == 0:
                     continue
-                p = _patches.get((self.pxcor + dx, self.pycor + dy))
+                p = _neighbor_patch(self.pxcor, self.pycor, dx, dy)
                 if p is not None:
                     found.append(p)
         return AgentSet(found)
@@ -282,6 +285,18 @@ class Patch:
 def _wrap_coord(value, lo, hi):
     span = hi - lo + 1
     return ((value - (lo - 0.5)) % span) + (lo - 0.5)
+
+
+def _neighbor_patch(pxcor, pycor, dx, dy):
+    """Shared by Patch.neighbors4()/neighbors8(): the patch at an offset
+    from (pxcor, pycor), wrapping each axis independently if the world
+    wraps (real NetLogo's neighbors/neighbors4 do this too -- a patch on
+    a wrapped edge still has a full set of neighbors)."""
+    x, y = pxcor + dx, pycor + dy
+    if _wrap:
+        x = round(_wrap_coord(x, _min_pxcor, _max_pxcor))
+        y = round(_wrap_coord(y, _min_pycor, _max_pycor))
+    return _patches.get((x, y))
 
 
 def _wrapped_delta(dx, dy):
@@ -382,6 +397,16 @@ class Turtle:
     def pen_up(self):
         """NetLogo's `pen-up`: stop drawing a trail when this turtle moves."""
         self.pen_is_down = False
+
+    def move_to(self, other_turtle):
+        """NetLogo's `move-to`: jump straight to another turtle's position
+        (draws a trail there too, same as forward(), if the pen is down).
+        Only takes a turtle so far -- real NetLogo also accepts a patch,
+        not needed by any model built against this runtime yet."""
+        old_x, old_y = self.xcor, self.ycor
+        self.xcor, self.ycor = other_turtle.xcor, other_turtle.ycor
+        if self.pen_is_down:
+            _drawing.append((old_x, old_y, self.xcor, self.ycor, self.color))
 
     def right(self, degrees):
         self.heading = (self.heading + degrees) % 360
@@ -582,6 +607,10 @@ class Link:
         """NetLogo's `other-end`."""
         return self.end2 if turtle is self.end1 else self.end1
 
+    def both_ends(self):
+        """NetLogo's `both-ends`: this link's two turtles as an agentset."""
+        return AgentSet((self.end1, self.end2))
+
     def __repr__(self):
         return f"Link({self.end1.who}, {self.end2.who})"
 
@@ -684,6 +713,11 @@ def floor(x):
     return math.floor(x)
 
 
+def log(number, base):
+    """NetLogo's two-argument `log <number> <base>`."""
+    return math.log(number, base)
+
+
 def ask(agents: Iterable[_T]) -> list[_T]:
     """NetLogo's `ask`: snapshots the (possibly live) agentset so the
     for-loop over it is safe even if the loop kills or creates agents
@@ -713,16 +747,47 @@ def random(n):
     return _random.randrange(int(n))
 
 
+def random_poisson(mean):
+    """NetLogo's `random-poisson`: a random integer drawn from a Poisson
+    distribution with the given mean (Knuth's algorithm -- simple and
+    exact, if O(mean) time, which is fine at the scale this runtime
+    operates at; see models/rock_paper_scissors.py)."""
+    limit = math.exp(-mean)
+    k = 0
+    p = 1.0
+    while True:
+        k += 1
+        p *= _random.random()
+        if p <= limit:
+            return k - 1
+
+
 def one_of(items):
     """NetLogo's `one-of`: a uniformly random element of a list/agentset, or
-    None (NetLogo's `nobody`) if it's empty."""
-    items = list(items)
+    None (NetLogo's `nobody`) if it's empty. Skips the defensive copy when
+    `items` is already a plain list/tuple (a live agentset or generator
+    still needs one, to snapshot it) -- matters when a model calls this
+    many times per tick against the same already-materialized list (see
+    models/rock_paper_scissors.py), where re-copying thousands of patches
+    on every single call would make each tick noticeably slow."""
+    if not isinstance(items, (list, tuple)):
+        items = list(items)
     return _random.choice(items) if items else None
 
 
 def n_of(n, agents):
     """NetLogo's `n-of`: n random DISTINCT agents from a list/agentset."""
     return AgentSet(_random.sample(list(agents), n))
+
+
+def shuffle(items):
+    """NetLogo's `shuffle`: a new, randomly-reordered list -- unlike
+    Python's own random.shuffle(), which shuffles in place and returns
+    None, this reports the shuffled list directly, matching NetLogo's own
+    reporter (not command) semantics."""
+    items = list(items)
+    _random.shuffle(items)
+    return items
 
 
 def layout_spring(turtle_agents, link_agents, spring_constant, spring_length, repulsion_constant):
@@ -854,10 +919,14 @@ def stop():
 def clear_all():
     """NetLogo's `clear-all`: wipes every turtle and link, rebuilds the
     patch grid at the world's current size (see resize_world()), clears
-    every plot pen's history, and clears the pen-drawn trail (real
-    NetLogo's `clear-all` includes `clear-all-plots` and
-    `clear-drawing`)."""
-    global _turtles, _patches, _ticks, _running
+    every plot pen's history, clears the pen-drawn trail, and resets
+    turtle `who` numbering back to 0 (real NetLogo's `clear-all` includes
+    `clear-all-plots`, `clear-drawing`, and restarting who-numbering --
+    without the last one, switching models within the same running server
+    would carry the previous model's turtle count into the next model's
+    own who values, which Ants' `who >= ticks` staggered-start logic
+    genuinely depends on being small)."""
+    global _turtles, _patches, _ticks, _running, _who_counter
     _turtles = {}
     _patches = {
         (x, y): Patch(x, y) for x in range(_min_pxcor, _max_pxcor + 1) for y in range(_min_pycor, _max_pycor + 1)
@@ -867,6 +936,7 @@ def clear_all():
     _links.clear()
     _plot_pens.clear()
     _drawing.clear()
+    _who_counter = itertools.count()
 
 
 def clear_drawing():
@@ -982,16 +1052,21 @@ _plot_pens = {}  # pen name -> list of (x, y) points, oldest first
 def plot_widget(title, x_label="", y_label="", pens=()):
     """NetLogo's plot widget: `<plot display="populations" xAxis="time"
     yAxis="pop."><pen display="sheep" color="...">...`. `pens` is a list of
-    (name, color) pairs -- color is a plain CSS color string for this app's
-    own frontend to draw with, not a NetLogo color number. Pure
-    declaration, like button()."""
+    (name, color) or (name, color, mode) tuples -- color is a plain CSS
+    color string for this app's own frontend to draw with, not a NetLogo
+    color number; mode is "line" (default -- NetLogo's mode 0/2, an
+    ordinary time-series pen fed by plot()/plotxy()) or "bar" (NetLogo's
+    mode 1, a real histogram pen fed by histogram()). Pure declaration,
+    like button()."""
     _register_widget(
         {
             "type": "plot",
             "title": title,
             "x_label": x_label,
             "y_label": y_label,
-            "pens": [{"name": name, "color": color} for name, color in pens],
+            "pens": [
+                {"name": p[0], "color": p[1], "mode": p[2] if len(p) > 2 else "line"} for p in pens
+            ],
         }
     )
 
@@ -1021,6 +1096,32 @@ def plot_data():
     """Every pen's current (x, y) points so far -- what a model's state()
     hands to the frontend to draw, e.g. {"sheep": [[0, 100], [1, 98], ...]}."""
     return {pen: [list(point) for point in points] for pen, points in _plot_pens.items()}
+
+
+def histogram(pen, values, bin_width=1):
+    """NetLogo's `histogram <list>`, run from inside a "bar"-mode pen's
+    update code (see plot_widget()): bins `values` into a fresh bar chart
+    for the named pen, REPLACING whatever that pen showed before -- a
+    histogram is always a snapshot of the current distribution, not an
+    accumulating time series like plot()/plotxy(). `bin_width` groups
+    values into buckets of that width (default 1, right for small-integer
+    data like a node's degree) -- NetLogo's own bin-count heuristics
+    aren't replicated exactly here; see models/preferential_attachment.py."""
+    values = list(values)
+    if not values:
+        _plot_pens[pen] = []
+        return
+    lo = math.floor(min(values) / bin_width) * bin_width
+    hi = math.ceil((max(values) + bin_width) / bin_width) * bin_width
+    bins = {}
+    edge = lo
+    while edge < hi:
+        bins[edge] = 0
+        edge += bin_width
+    for v in values:
+        edge = lo + math.floor((v - lo) / bin_width) * bin_width
+        bins[edge] = bins.get(edge, 0) + 1
+    _plot_pens[pen] = sorted(bins.items())
 
 
 # --- state() -- turning the world into what the frontend draws -------------

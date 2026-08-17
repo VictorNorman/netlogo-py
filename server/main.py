@@ -68,6 +68,8 @@ import models.wolf_sheep as wolf_sheep_module
 import models.virus_on_network as virus_module
 import models.life as life_module
 import models.sierpinski as sierpinski_module
+import models.preferential_attachment as preferential_attachment_module
+import models.rock_paper_scissors as rock_paper_scissors_module
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -423,6 +425,72 @@ MODEL_REGISTRY = {
             "vectorized": {
                 "module": sierpinski_module,
                 "source_file": "models/sierpinski.py",
+            },
+        },
+    },
+    "preferential_attachment": {
+        "label": "Preferential Attachment",
+        "render": "turtles",
+        "sliders": _sliders_from_module(preferential_attachment_module),
+        "switches": _switches_from_module(preferential_attachment_module),
+        "choosers": _choosers_from_module(preferential_attachment_module),
+        "monitors": _monitors_from_module(preferential_attachment_module),
+        "plot": _plot_from_module(preferential_attachment_module),
+        "info": """
+            <h2>Preferential Attachment</h2>
+            <p>
+              A Python port of NetLogo's classic <em>Preferential
+              Attachment</em> model -- the first model in this app to use a
+              real histogram-mode plot pen. Starting from two connected
+              nodes, each tick adds one new node, linked to a random END of
+              a random EXISTING link -- so a node with more connections is
+              proportionally more likely to gain new ones ("rich get
+              richer"), the mechanism behind real-world "scale-free"
+              networks like the web or social graphs.
+            </p>
+            <p>
+              Watch the <em>Degree Distribution</em> histogram develop a
+              long tail: most nodes stay small, but a few "hubs" accumulate
+              a disproportionate share of the connections.
+            </p>
+        """,
+        "engines": {
+            "vectorized": {
+                "module": preferential_attachment_module,
+                "source_file": "models/preferential_attachment.py",
+            },
+        },
+    },
+    "rock_paper_scissors": {
+        "label": "Rock Paper Scissors",
+        "render": "patches",
+        "sliders": _sliders_from_module(rock_paper_scissors_module),
+        "switches": _switches_from_module(rock_paper_scissors_module),
+        "choosers": _choosers_from_module(rock_paper_scissors_module),
+        "monitors": _monitors_from_module(rock_paper_scissors_module),
+        "plot": _plot_from_module(rock_paper_scissors_module),
+        "info": """
+            <h2>Rock Paper Scissors</h2>
+            <p>
+              A Python port of NetLogo's classic <em>Rock Paper Scissors</em>
+              model. Every patch is red, green, blue, or blank; red beats
+              green, green beats blue, blue beats red. Each tick, random
+              pairs of neighboring patches swap, reproduce, or compete, at
+              rates drawn from a Poisson distribution -- producing the
+              chasing spirals characteristic of cyclic-dominance ecosystems.
+            </p>
+            <p>
+              The three <code>*-rate-exponent</code> sliders each scale
+              their event's rate by a power of 10 -- watch how much faster
+              <em>swap</em> (movement) needs to be, relative to
+              <em>select</em> (competition), to keep the spirals stable
+              instead of collapsing to one color.
+            </p>
+        """,
+        "engines": {
+            "vectorized": {
+                "module": rock_paper_scissors_module,
+                "source_file": "models/rock_paper_scissors.py",
             },
         },
     },
