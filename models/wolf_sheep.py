@@ -1,19 +1,12 @@
 """Python port of NetLogo's classic "Wolf Sheep Predation" model -- see
 orig-src/NetLogo/models/Sample Models/Biology/Wolf Sheep Predation.nlogox
-for the real source this was checked against line by line. The first model
-in this app to use a plot (see engine/netlogo.py's `plot_widget()`/
-`plot()`), a chooser (`chooser()`), and to give a switch (`show_energy`)
-real effect through the frontend UI.
-
-Written directly against engine/netlogo.py's free-function runtime -- see
-models/fire.py for the design decisions behind that runtime.
+for the real source this was checked against line by line.
 
 Deliberate deviations from the real source:
   - No turtle labels (`show-energy?` displaying each turtle's energy as
     floating text) -- this app's turtle renderer has no text-label
     capability. The switch is still ported (and still functional -- it's
-    just that nothing reads it yet), the same spirit as GasLab's
-    `collide` switch before this port gave switches real frontend UI.
+    just that nothing reads it yet).
   - `netlogo-web?`-based max-sheep cap (10000 vs 30000) collapses to the
     single desktop value, 30000 -- there's no separate "web" vs "desktop"
     distinction in this app.

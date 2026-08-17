@@ -9,16 +9,6 @@ procedures, the same shape as NetLogo's own `globals [...]` / `to setup` /
 behind that runtime (breed as a plain attribute, ask() returning a plain
 list for `for`, .where() as an equality-only shorthand, slider() binding a
 real number rather than a wrapper object).
-
-Unlike this repo's old vectorized fire.py (deleted), which modeled burning
-as a direct patch-color state machine (green -> red -> gray, one tick per
-stage, no turtles at all), this is a faithful port of what the real model
-actually does: burning patches sprout a "fires" turtle (the patch itself
-goes black immediately), each fire ignites its green neighbors and then
-downgrades to an "embers" turtle, and embers gradually darken over several
-ticks before finally dying and stamping their color onto the patch. That
-multi-tick fade is real NetLogo behavior this repo's earlier, simplified
-port never had.
 """
 
 from engine.netlogo import *

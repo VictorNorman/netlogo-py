@@ -5,17 +5,15 @@ in a Box.nlogox for the real source this was checked against line by line
 walls -- not the one ported here, since this app's box-with-walls framing
 matches "Gas in a Box").
 
-Written directly against engine/netlogo.py's free-function runtime -- see
-models/fire.py for the design decisions behind that runtime.
-
 Deliberate deviations from the real source:
   - No `flashes` breed (the real model sprouts a fading colored patch-flash
     turtle wherever a particle bounces off a wall) -- purely decorative,
     and this app has no per-turtle-lifetime/fade rendering to show it.
   - No `trace?` switch / pen-drawing (a particle-0 motion trail) -- same
     reasoning, no pen/drawing rendering exists in this app.
-  - No plot widgets (the real model's speed/energy histograms) -- this app
-    has no plot infrastructure at all yet.
+  - No plot widgets (the real model's speed/energy histograms) --
+    engine/netlogo.py does have plot_widget()/plot() now, just not used
+    for this model yet.
   - `shade-of? yellow [pcolor] of new-patch` (real NetLogo's fuzzy
     same-hue-family check) is simplified to a direct `== yellow` -- this
     model's wall patches are always exactly yellow, never a shaded
@@ -25,8 +23,7 @@ Deliberate deviations from the real source:
     monitor) alongside the real percent-fast/medium/slow and average
     speed/energy monitors -- kept because "KE stays exactly constant while
     speeds spread out" is this app's pedagogical hook for the model (see
-    the info text in server/main.py), the same spirit as Flocking's
-    order_parameter or Ants' food_in_nest/food_remaining.
+    the info text in server/main.py).
 """
 
 from engine.netlogo import *

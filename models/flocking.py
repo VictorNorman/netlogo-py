@@ -2,14 +2,6 @@
 orig-src/NetLogo/models/Sample Models/Biology/Flocking.nlogox for the real
 source this was checked against line by line.
 
-Written directly against engine/netlogo.py's free-function runtime instead
-of a class -- see models/fire.py and engine/netlogo.py's module docstring
-for the design decisions behind that runtime. No breeds this time (plain
-`turtles`, matching the real model), but it's the first model in this repo
-to need engine/netlogo.py's wrap-aware primitives (distance_to/towards/
-in_radius/nearest), added specifically for this port -- Fire's turtles
-never moved, so distance/direction between turtles never came up before.
-
 Rules per turtle, per tick (see `flock`, a near-literal transliteration of
 the real `to flock` procedure):
   - find flockmates (other turtles within `vision`);

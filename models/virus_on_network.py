@@ -3,12 +3,6 @@ Sample Models/Networks/Virus on a Network.nlogox (from the full NetLogo
 distribution, not bundled in this repo) for the real source this was
 checked against line by line.
 
-Written directly against engine/netlogo.py's free-function runtime -- see
-models/fire.py for the design decisions behind that runtime. The first
-model in this app to use links -- create_link_with()/link_neighbor()/
-link_neighbors()/my_links()/links, plus layout_spring() for the one-time
-initial network layout -- all added to engine/netlogo.py for this port.
-
 Deliberate deviations from the real source:
   - `average-node-degree`'s and `initial-outbreak-size`'s slider maxes are
     static numbers here (real NetLogo ties them dynamically to
@@ -21,8 +15,7 @@ Deliberate deviations from the real source:
     a reasonable-looking initial network.
   - susceptible_count/infected_count/resistant_count monitors are this
     app's own addition beyond the real widget set (which only has the
-    plot) -- same spirit as every other model's extra monitors (Wolf
-    Sheep's sheep_count, Ants' food_in_nest, etc.)
+    plot), a value-add rather than a real-source deviation.
 """
 
 from engine.netlogo import *

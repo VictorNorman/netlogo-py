@@ -2,13 +2,6 @@
 orig-src/NetLogo/models/Sample Models/Biology/Ants.nlogox for the real
 source this was checked against line by line.
 
-Written directly against engine/netlogo.py's free-function runtime -- see
-models/fire.py and engine/netlogo.py's module docstring for the design
-decisions behind that runtime. This is the first model to need
-engine/netlogo.py's `diffuse()` (a real whole-grid convolution, unlike
-Fire's conditional patch recoloring) and its patch-ahead/left/right
-sniffing primitives, both added to engine/netlogo.py for this port.
-
 Deliberate deviations from the real source:
   - Carrying-food state is tracked with an explicit `carrying` boolean
     attribute, not by turtle color (`color = red` / `color = orange + 1`
@@ -17,8 +10,8 @@ Deliberate deviations from the real source:
     boolean reads more directly than "the color IS the state."
   - `food_in_nest`/`food_remaining` monitors and a self-terminating
     is_running() (real Ants just runs forever) are this app's own
-    additions beyond the source -- same spirit as Flocking's
-    order_parameter, a value-add rather than a real-source deviation.
+    additions beyond the source, a value-add rather than a real-source
+    deviation.
 """
 
 from engine.netlogo import *
