@@ -410,6 +410,23 @@ class Turtle:
         if _wrap:
             self.xcor = _wrap_coord(self.xcor, _min_pxcor, _max_pxcor)
             self.ycor = _wrap_coord(self.ycor, _min_pycor, _max_pycor)
+        else:
+            # can_move() isn't a perfect guarantee: right at a corner, it
+            # can fail on one axis (too close to that edge), a model turns
+            # 180 degrees to compensate (e.g. Ants' wiggle(), copied
+            # verbatim from real NetLogo's own `if not can-move? 1 [ rt
+            # 180 ]`) without rechecking -- but reversing 180 degrees also
+            # flips the *other* axis's sign, which can turn a heading that
+            # was safe on that axis into one that overshoots it instead.
+            # Real NetLogo would raise a runtime error ("the turtle
+            # cannot move beyond the edge of the world") and halt; this
+            # app clamps to just inside the boundary instead (the same
+            # [min-0.5, max+0.5) range can_move() itself already treats
+            # as in-bounds, so this is a no-op for every already-valid
+            # position and only ever changes the rare one that
+            # can_move() should have -- but couldn't -- rule out).
+            self.xcor = max(_min_pxcor - 0.499999, min(_max_pxcor + 0.499999, self.xcor))
+            self.ycor = max(_min_pycor - 0.499999, min(_max_pycor + 0.499999, self.ycor))
         if self.pen_is_down:
             # Not wrap-aware (a straight line from the old point to the new
             # one, even if the move wrapped around the torus) -- no model
