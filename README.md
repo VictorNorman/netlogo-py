@@ -1,6 +1,6 @@
 # NetLogo.py
 
-A from-scratch, **class-less** Python runtime for [NetLogo](https://ccl.northwestern.edu/netlogo/)-style agent-based models, plus a small FastAPI server and a zero-build browser frontend to run and watch them — either on the server or **entirely inside the browser** via [Pyodide](https://pyodide.org/) (CPython compiled to WebAssembly), with the model's source live-editable and re-runnable without a page reload.
+A Python runtime for [NetLogo](https://ccl.northwestern.edu/netlogo/)-style agent-based models, plus a small FastAPI server and a zero-build browser frontend to run and watch them — either on the server or **entirely inside the browser** via [Pyodide](https://pyodide.org/) (CPython compiled to WebAssembly), with the model's source live-editable and re-runnable without a page reload.
 
 Five classic NetLogo Sample Models are ported so far — **Fire**, **Flocking**, **GasLab**, **Ants**, and **Wolf Sheep Predation** — each checked against its real `.nlogox` source line by line, not reimplemented from memory.
 
@@ -9,28 +9,6 @@ python -m uvicorn server.main:app --reload --port 8765
 ```
 
 Then open `http://localhost:8765`, pick a model, hit **setup** then **go**.
-
-## Why "class-less"?
-
-NetLogo itself has no classes. A model is just a handful of `to setup` / `to go` procedures operating on one shared, ambient world — turtles, patches, and globals that any procedure can touch directly. Most ABM frameworks translate this into an `Agent`/`World`/`Model` class hierarchy, which reads nothing like the NetLogo code it's porting.
-
-This project goes the other way: `engine/netlogo.py` is a single module of free functions and one shared piece of module-level state (there's only ever one world), and each model file is a plain Python module — `setup()`, `go()`, `is_running()` as top-level functions, sliders and breeds as top-level assignments — that reads as close to the real `.nlogox` source as Python syntax allows. No model file defines a class. Compare:
-
-```netlogo
-to setup
-  clear-all
-  ask patches [ set pcolor one-of color-list ]
-  reset-ticks
-end
-```
-
-```python
-def setup():
-    clear_all()
-    for p in ask(patches):
-        p.pcolor = one_of(color_list)
-    reset_ticks()
-```
 
 ## The five models
 
@@ -56,9 +34,9 @@ Switching the engine dropdown swaps the transport; the rendering code (`drawPatc
 ## Architecture
 
 ```
-engine/netlogo.py   the runtime: primitives, world state, widget system, auto_state()
-models/*.py          five model files, each a plain module (no classes)
-server/main.py       FastAPI app: model registry + HTTP API + static file serving
+engine/netlogo.py     the runtime: primitives, world state, widget system, auto_state()
+models/*.py           five ported models
+server/main.py        FastAPI app: model registry + HTTP API + static file serving
 static/               zero-build frontend: index.html, app.js, style.css, pyodide-worker.js
 ```
 
