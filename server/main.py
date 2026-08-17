@@ -67,6 +67,7 @@ import models.ants as ants_module
 import models.wolf_sheep as wolf_sheep_module
 import models.virus_on_network as virus_module
 import models.life as life_module
+import models.sierpinski as sierpinski_module
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -390,6 +391,38 @@ MODEL_REGISTRY = {
             "vectorized": {
                 "module": life_module,
                 "source_file": "models/life.py",
+            },
+        },
+    },
+    "sierpinski": {
+        "label": "Sierpinski Simple",
+        "render": "turtles",
+        "sliders": _sliders_from_module(sierpinski_module),
+        "switches": _switches_from_module(sierpinski_module),
+        "choosers": _choosers_from_module(sierpinski_module),
+        "monitors": _monitors_from_module(sierpinski_module),
+        "plot": _plot_from_module(sierpinski_module),
+        "info": """
+            <h2>Sierpinski Simple</h2>
+            <p>
+              A Python port of NetLogo's classic <em>Sierpinski Simple</em>
+              model -- the first model in this app to use a pen. One turtle
+              starts with its pen down; each tick, every living turtle
+              hatches three children (one per leg of a Y shape), each
+              moving forward and leaving a trail, then the parent dies. The
+              legs get half as long each generation, tracing out Sierpinski's
+              self-similar tree.
+            </p>
+            <p>
+              Click <em>go</em> repeatedly (or hold it) to grow the tree one
+              generation at a time -- watch <em>Num Turtles</em> triple
+              (3, 9, 27, ...) each tick as the fractal branches.
+            </p>
+        """,
+        "engines": {
+            "vectorized": {
+                "module": sierpinski_module,
+                "source_file": "models/sierpinski.py",
             },
         },
     },

@@ -37,6 +37,7 @@ const WASM_CLASS_NAMES = {
   wolf_sheep: null,
   virus_on_network: null,
   life: null,
+  sierpinski: null,
 };
 
 // Not a plain setInterval: doStep() is an async network round-trip, and a
@@ -305,8 +306,11 @@ function canvasPixelToWorld(px, py) {
   return [xcor, ycor];
 }
 
-function drawLinks(state) {
-  state.links.forEach(([x1, y1, x2, y2, color]) => {
+// Shared by drawLinks()/drawDrawing(): both are just a list of
+// [x1, y1, x2, y2, [r,g,b]] line segments in world coordinates -- a link
+// between two turtles, or a pen-drawn trail segment, drawn identically.
+function drawSegments(state, segments) {
+  segments.forEach(([x1, y1, x2, y2, color]) => {
     const [px1, py1] = worldToCanvas(state, x1, y1);
     const [px2, py2] = worldToCanvas(state, x2, y2);
     ctx.strokeStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
@@ -316,6 +320,14 @@ function drawLinks(state) {
     ctx.lineTo(px2, py2);
     ctx.stroke();
   });
+}
+
+function drawLinks(state) {
+  drawSegments(state, state.links);
+}
+
+function drawDrawing(state) {
+  drawSegments(state, state.drawing);
 }
 
 function drawTurtles(state) {
@@ -370,7 +382,7 @@ function drawState(state) {
   // (it has real turtles but represents them purely by patch color); every
   // other model has both `colors` and `turtles` (auto_state()'s defaults),
   // relying on drawPatches() painting every pixel first so drawLinks()/
-  // drawTurtles() don't need to separately clear the canvas.
+  // drawDrawing()/drawTurtles() don't need to separately clear the canvas.
   if (!state.colors) {
     ctx.fillStyle = "black";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -380,6 +392,9 @@ function drawState(state) {
   }
   if (state.links) {
     drawLinks(state);
+  }
+  if (state.drawing) {
+    drawDrawing(state);
   }
   if (state.turtles) {
     drawTurtles(state);

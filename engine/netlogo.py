@@ -152,6 +152,7 @@ def color_to_rgb(color):
 _turtles: dict[int, "Turtle"] = {}
 _patches: dict[tuple[int, int], "Patch"] = {}
 _links: dict[tuple[int, int], "Link"] = {}  # (who1, who2) sorted tuple -> Link
+_drawing: list = []  # (x1, y1, x2, y2, color) segments drawn by pen_down() turtles, oldest first
 _who_counter = itertools.count()
 _ticks = 0
 _default_shapes = {}
@@ -312,6 +313,7 @@ class Turtle:
         self.color = white
         self.breed = breed
         self.shape = _default_shapes.get(breed, _default_shapes.get("turtles", "default"))
+        self.pen_is_down = False  # NetLogo's pens start up; see pen_down()/pen_up() below
 
     # NetLogo's `turtles-own` lets a model add its own turtle attributes at
     # will (GasLab's `speed`/`mass`/`energy`, Ants' `carrying`, ...) -- see
@@ -355,15 +357,31 @@ class Turtle:
         return (_min_pxcor - 0.5 <= new_x < _max_pxcor + 0.5) and (_min_pycor - 0.5 <= new_y < _max_pycor + 0.5)
 
     def forward(self, distance):
+        old_x, old_y = self.xcor, self.ycor
         rad = math.radians(self.heading)
         self.xcor += distance * math.sin(rad)
         self.ycor += distance * math.cos(rad)
         if _wrap:
             self.xcor = _wrap_coord(self.xcor, _min_pxcor, _max_pxcor)
             self.ycor = _wrap_coord(self.ycor, _min_pycor, _max_pycor)
+        if self.pen_is_down:
+            # Not wrap-aware (a straight line from the old point to the new
+            # one, even if the move wrapped around the torus) -- no model
+            # built against this runtime both wraps and draws yet, so this
+            # hasn't mattered in practice.
+            _drawing.append((old_x, old_y, self.xcor, self.ycor, self.color))
 
     fd = forward
     jump = forward  # NetLogo's `jump` is `forward` under a different name
+
+    def pen_down(self):
+        """NetLogo's `pen-down`: from now on, moving this turtle draws a
+        trail in its current color (see forward())."""
+        self.pen_is_down = True
+
+    def pen_up(self):
+        """NetLogo's `pen-up`: stop drawing a trail when this turtle moves."""
+        self.pen_is_down = False
 
     def right(self, degrees):
         self.heading = (self.heading + degrees) % 360
@@ -835,9 +853,10 @@ def stop():
 
 def clear_all():
     """NetLogo's `clear-all`: wipes every turtle and link, rebuilds the
-    patch grid at the world's current size (see resize_world()), and
-    clears every plot pen's history (real NetLogo's `clear-all` includes
-    `clear-all-plots`)."""
+    patch grid at the world's current size (see resize_world()), clears
+    every plot pen's history, and clears the pen-drawn trail (real
+    NetLogo's `clear-all` includes `clear-all-plots` and
+    `clear-drawing`)."""
     global _turtles, _patches, _ticks, _running
     _turtles = {}
     _patches = {
@@ -847,6 +866,13 @@ def clear_all():
     _running = True
     _links.clear()
     _plot_pens.clear()
+    _drawing.clear()
+
+
+def clear_drawing():
+    """NetLogo's `clear-drawing`: clears the pen-drawn trail without
+    touching turtles/patches/plots (clear_all() already includes this)."""
+    _drawing.clear()
 
 
 def _register_widget(fields):
@@ -1062,6 +1088,16 @@ def links_grid(color_fn=None):
     return [[l.end1.xcor, l.end1.ycor, l.end2.xcor, l.end2.ycor, color_fn(l)] for l in links]
 
 
+def drawing_grid():
+    """The pen-drawn trail so far, as a list of [x1, y1, x2, y2, [r,g,b]]
+    rows -- what state() hands the frontend as "drawing" (NetLogo's
+    pen-down trail). Unlike links_grid()/turtles_grid(), this isn't a
+    snapshot of *current* agent state -- it's an append-only history (see
+    Turtle.forward()), so a segment stays even after the turtle that drew
+    it dies, same as real NetLogo's drawing layer."""
+    return [[x1, y1, x2, y2, list(color_to_rgb(color))] for (x1, y1, x2, y2, color) in _drawing]
+
+
 def _resolve_widget_value(ns, name):
     """Shared by auto_state(): a slider/switch/chooser/monitor's current
     value is whatever `name` points to in the model's own namespace,
@@ -1080,6 +1116,7 @@ def auto_state(
     patches=True,
     turtles=True,
     links=True,
+    drawing=True,
     patch_color=None,
     turtle_color=None,
     link_color=None,
@@ -1088,9 +1125,9 @@ def auto_state(
     """Builds a model's entire state() dict automatically -- the one JSON
     shape this app's frontend expects every tick -- from its already-
     declared widgets (slider()/switch()/chooser()/monitor()/plot_widget())
-    plus its live patches/turtles/links. See the note above this function
-    for when a model needs to call this itself instead of skipping
-    state() entirely, e.g.:
+    plus its live patches/turtles/links/pen-drawing. See the note above
+    this function for when a model needs to call this itself instead of
+    skipping state() entirely, e.g.:
         def state():
             return auto_state(turtles=False)                 # Fire
             return auto_state(patch_color=my_patch_color)     # Ants
@@ -1101,13 +1138,15 @@ def auto_state(
     _ModuleAdapter); a model calling auto_state() from within its own
     state() doesn't pass this, since it's found automatically from the
     caller's own globals.
-    `patches`/`turtles`/`links`: whether to include the "colors"/
-    "turtles"/"links" keys -- `links` defaults to True same as the other
-    two, so a model that never creates a link just gets an empty list,
-    same spirit as always including "colors" even for a model (Flocking)
-    whose patches never change.
+    `patches`/`turtles`/`links`/`drawing`: whether to include the
+    "colors"/"turtles"/"links"/"drawing" keys -- all default to True, so a
+    model that never uses one of them just gets an empty list, same
+    spirit as always including "colors" even for a model (Flocking) whose
+    patches never change.
     `patch_color`/`turtle_color`/`link_color`: see patches_grid()/
-    turtles_grid()/links_grid().
+    turtles_grid()/links_grid(). (drawing_grid() has no override -- a
+    pen's trail color is always whatever color the turtle actually was
+    when it drew that segment, there's nothing else it could sensibly be.)
     `extra`: a plain dict of any further state() keys a model computes
     itself, merged in last (so it can override anything above too)."""
     if module is None:
@@ -1135,6 +1174,8 @@ def auto_state(
         result["colors"] = patches_grid(patch_color)
     if links:
         result["links"] = links_grid(link_color)
+    if drawing:
+        result["drawing"] = drawing_grid()
     if turtles:
         result["turtles"] = turtles_grid(turtle_color)
 
