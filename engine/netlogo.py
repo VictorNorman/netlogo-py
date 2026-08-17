@@ -780,6 +780,50 @@ def reset_ticks():
     _ticks = 0
 
 
+# --- mouse ------------------------------------------------------------
+# Real NetLogo's mouse-xcor/mouse-ycor/mouse-down?/mouse-inside? always
+# report the browser's *current* mouse position/button state, updated
+# continuously by the running environment itself -- there's no equivalent
+# "the browser pushes this to me" channel in this port, so
+# set_mouse_state() below is called explicitly by server/main.py's
+# /api/mouse endpoint (and the WASM engine's equivalent) whenever the
+# frontend reports a mouse event over the world canvas, and the four
+# reporters below just read whatever was set most recently.
+_mouse_xcor = 0.0
+_mouse_ycor = 0.0
+_mouse_down = False
+_mouse_inside = False
+
+
+def set_mouse_state(xcor, ycor, down, inside=True):
+    """Not a NetLogo primitive itself -- see the module note above."""
+    global _mouse_xcor, _mouse_ycor, _mouse_down, _mouse_inside
+    _mouse_xcor = xcor
+    _mouse_ycor = ycor
+    _mouse_down = down
+    _mouse_inside = inside
+
+
+def mouse_xcor():
+    """NetLogo's `mouse-xcor`."""
+    return _mouse_xcor
+
+
+def mouse_ycor():
+    """NetLogo's `mouse-ycor`."""
+    return _mouse_ycor
+
+
+def mouse_down():
+    """NetLogo's `mouse-down?`."""
+    return _mouse_down
+
+
+def mouse_inside():
+    """NetLogo's `mouse-inside?`."""
+    return _mouse_inside
+
+
 def stop():
     """NetLogo's `stop`: marks the current `go` as finished. In this port
     a model's own go() is expected to `return` right after calling stop()

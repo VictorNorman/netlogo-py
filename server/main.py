@@ -66,6 +66,7 @@ import models.gas_lab as gas_lab_module
 import models.ants as ants_module
 import models.wolf_sheep as wolf_sheep_module
 import models.virus_on_network as virus_module
+import models.life as life_module
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -359,6 +360,39 @@ MODEL_REGISTRY = {
             },
         },
     },
+    "life": {
+        "label": "Life",
+        "render": "patches",
+        "sliders": _sliders_from_module(life_module),
+        "switches": _switches_from_module(life_module),
+        "choosers": _choosers_from_module(life_module),
+        "monitors": _monitors_from_module(life_module),
+        "plot": _plot_from_module(life_module),
+        "info": """
+            <h2>Life</h2>
+            <p>
+              A Python port of NetLogo's classic <em>Life</em> (Conway's Game
+              of Life) model -- the first model in this app that responds to
+              the mouse. Each patch is alive or dead; every tick, a cell is
+              born if it has exactly 3 living neighbors, survives if it has
+              2 or 3, and dies otherwise.
+            </p>
+            <p>
+              Click and drag on the grid (with or without <em>go</em>
+              running) to draw or erase cells by hand -- whether the drag
+              draws or erases is decided by whatever the first cell you
+              touch already was, so dragging across a mix of live and dead
+              cells stays consistent for the whole gesture, matching the
+              real model's own draw-cells behavior.
+            </p>
+        """,
+        "engines": {
+            "vectorized": {
+                "module": life_module,
+                "source_file": "models/life.py",
+            },
+        },
+    },
 }
 
 active_model_key = "flocking"
@@ -397,6 +431,13 @@ class SelectEngineRequest(BaseModel):
 
 class CommandRequest(BaseModel):
     text: str
+
+
+class MouseRequest(BaseModel):
+    xcor: float
+    ycor: float
+    down: bool
+    inside: bool = True
 
 
 @app.get("/")
@@ -472,6 +513,20 @@ def setup(params: Dict[str, Any]):
 @app.post("/api/step")
 def step():
     model.go()
+    return {**_state(model), "running": model.is_running()}
+
+
+@app.post("/api/mouse")
+def mouse(req: MouseRequest):
+    # Sets the shared mouse state (netlogo.mouse_xcor()/mouse_down()/etc.
+    # then read it) and, if the active model defines a draw_cells()
+    # (NetLogo's own name for this in Life -- the first model to need
+    # mouse interaction), calls it once, mirroring one frame of the real
+    # model's own draw-cells forever-button loop. A model with no
+    # draw_cells() just gets its mouse state updated with no other effect.
+    netlogo.set_mouse_state(req.xcor, req.ycor, req.down, req.inside)
+    if hasattr(model, "draw_cells"):
+        model.draw_cells()
     return {**_state(model), "running": model.is_running()}
 
 

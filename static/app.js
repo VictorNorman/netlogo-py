@@ -36,6 +36,7 @@ const WASM_CLASS_NAMES = {
   ants: null,
   wolf_sheep: null,
   virus_on_network: null,
+  life: null,
 };
 
 // Not a plain setInterval: doStep() is an async network round-trip, and a
@@ -53,6 +54,7 @@ let goTimeoutId = null;
 let specsByKey = {};
 let currentEngine = "vectorized";
 let currentPlotSpec = null; // the active model's plot_widget() declaration, or null
+let lastState = null; // most recent drawState() input, so mouse handlers can invert worldToCanvas()
 
 function currentParams() {
   const params = {};
@@ -286,6 +288,23 @@ function worldToCanvas(state, x, y) {
   return [(x + w / 2) * scaleX, (1 - (y + h / 2) / h) * canvas.height];
 }
 
+// The exact algebraic inverse of worldToCanvas(), for turning a mouse
+// event's canvas-pixel position into NetLogo mouse-xcor/mouse-ycor world
+// coordinates. Needs the last-drawn state for its width/height (the same
+// world size every current frame was drawn at), so it returns null before
+// anything has been drawn yet.
+function canvasPixelToWorld(px, py) {
+  if (!lastState) {
+    return null;
+  }
+  const w = lastState.width;
+  const h = lastState.height;
+  const scaleX = canvas.width / w;
+  const xcor = px / scaleX - w / 2;
+  const ycor = (1 - py / canvas.height) * h - h / 2;
+  return [xcor, ycor];
+}
+
 function drawLinks(state) {
   state.links.forEach(([x1, y1, x2, y2, color]) => {
     const [px1, py1] = worldToCanvas(state, x1, y1);
@@ -345,6 +364,7 @@ function drawState(state) {
   if (!state) {
     return;
   }
+  lastState = state;
 
   // Shape-driven, not a fixed per-model mode: only Fire omits `turtles`
   // (it has real turtles but represents them purely by patch color); every
@@ -761,6 +781,67 @@ async function loadModels() {
   drawState(state);
   loadCodeTab();
 }
+
+// Mouse interaction (NetLogo's mouse-xcor/mouse-ycor/mouse-down?) -- wired
+// up unconditionally, not just for models that use it: a model that
+// doesn't define draw_cells() (or an equivalent) just gets its mouse
+// state updated with no visible effect, same as an unused slider. See
+// engine/netlogo.py's set_mouse_state()/mouse_xcor()/etc. and
+// server/main.py's /api/mouse.
+async function sendMouseState(xcor, ycor, down) {
+  let state;
+  if (currentEngine === "wasm") {
+    try {
+      state = await wasmCall("mouse", { xcor, ycor, down, inside: true });
+    } catch (err) {
+      appendOutput(`Python error:\n${err.message}`);
+      return;
+    }
+  } else {
+    state = await callApi("/api/mouse", { xcor, ycor, down, inside: true });
+  }
+  drawState(state);
+}
+
+// Dedupes on (rounded cell, down-state) so dragging within the same cell's
+// several-pixel-wide area doesn't fire a network round-trip per pixel.
+let lastMouseCellKey = null;
+
+function maybeSendMouse(px, py, down) {
+  const world = canvasPixelToWorld(px, py);
+  if (!world) {
+    return;
+  }
+  const [xcor, ycor] = world;
+  const cellKey = `${Math.round(xcor)},${Math.round(ycor)},${down}`;
+  if (cellKey === lastMouseCellKey) {
+    return;
+  }
+  lastMouseCellKey = cellKey;
+  sendMouseState(xcor, ycor, down);
+}
+
+canvas.addEventListener("mousedown", (event) => {
+  event.preventDefault();
+  maybeSendMouse(event.offsetX, event.offsetY, true);
+});
+
+canvas.addEventListener("mousemove", (event) => {
+  if ((event.buttons & 1) === 0) {
+    return; // only while the primary button is actually held (dragging)
+  }
+  maybeSendMouse(event.offsetX, event.offsetY, true);
+});
+
+canvas.addEventListener("mouseup", () => {
+  lastMouseCellKey = null;
+  sendMouseState(0, 0, false);
+});
+
+canvas.addEventListener("mouseleave", () => {
+  lastMouseCellKey = null;
+  sendMouseState(0, 0, false);
+});
 
 engineSelect.addEventListener("change", () => {
   selectEngine(engineSelect.value);

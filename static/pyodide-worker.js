@@ -103,6 +103,15 @@ def _do_set_param(name, value):
     if ok:
         setattr(_model, name, value)
     return {"ok": ok, "state": _model_state()}
+
+def _do_mouse(xcor, ycor, down, inside):
+    # Mirrors server/main.py's /api/mouse exactly -- see its own comment
+    # for why draw_cells() specifically.
+    from engine.netlogo import set_mouse_state
+    set_mouse_state(xcor, ycor, down, inside)
+    if hasattr(_model, "draw_cells"):
+        _model.draw_cells()
+    return _model_state()
 `;
 
 let pyodideInstance = null;
@@ -146,6 +155,7 @@ async function initPyodide() {
     doSetup: pyodide.globals.get("_do_setup"),
     doStep: pyodide.globals.get("_do_step"),
     doSetParam: pyodide.globals.get("_do_set_param"),
+    doMouse: pyodide.globals.get("_do_mouse"),
     modelState: pyodide.globals.get("_model_state"),
   };
   pyodideInstance = pyodide;
@@ -200,6 +210,11 @@ const handlers = {
   async step() {
     await ensurePyodide();
     return toJs(pyFns.doStep());
+  },
+
+  async mouse(payload) {
+    await ensurePyodide();
+    return toJs(pyFns.doMouse(payload.xcor, payload.ycor, payload.down, payload.inside));
   },
 
   async "set-param"(payload) {
