@@ -1,21 +1,13 @@
-"""Dimerizing Gas: a 2D hard-sphere gas (built on the same box/wall/elastic-
-collision machinery as models/gas_lab.py -- see that file for the physics
-this one borrows almost verbatim) with one addition layered on top: the
-reversible reaction 2 A <=> B. This is an original model for this app, not
-a NetLogo Sample Models port -- inspired by the request that led to it (a
-professor wanting a dynamic-equilibrium demo for their course, citing
-https://www.falstad.com/gas/gas.html -- "everything about this is great,
-just want to add a dimerization reaction to the mix") -- so there's no real
-.nlogox source to check it against line by line, unlike every other model
-in models/.
+"""Dimerizing Gas: a 2D hard-sphere gas with one addition layered on top:
+the reversible reaction 2 A <=> B. This is an original model for this
+app, not a NetLogo Sample Models port -- inspired by the request that led
+to it (a professor wanting a dynamic-equilibrium demo for their course,
+citing https://www.falstad.com/gas/gas.html -- "everything about this is
+great, just want to add a dimerization reaction to the mix") -- so
+there's no real .nlogox source to check it against line by line.
 
-The first model in this app to declare more than one plot_widget()
-(speeds histogram + population history) -- engine/netlogo.py already
-supported multiple plot_widget() calls per model (each is just its own
-__widgets__ entry), but server/main.py and static/app.js only ever read/
-rendered the first one; both were generalized to a list for this model,
-with every other model's single plot now riding the same "plots" list of
-length 1.
+The first model in this app to declare more than one plot_widget() -- a
+population-history line plot and a live particle-speed histogram.
 
 Reaction mechanics -- how a collision becomes a chemical event:
   - Two A particles that share a patch (see check_for_collision()) react
@@ -30,8 +22,8 @@ Reaction mechanics -- how a collision becomes a chemical event:
     its position, splitting its momentum symmetrically about its own
     center-of-mass velocity plus a random-direction "kick" (see below).
 
-Energy bookkeeping is the one place this deliberately does NOT mirror
-GasLab's "total KE conserved exactly" framing, and does so on purpose:
+Energy bookkeeping deliberately does NOT conserve total kinetic energy
+exactly, on purpose:
   - combine() conserves momentum exactly but NOT translational kinetic
     energy -- forming a bond releases the two A's *relative* KE around
     their shared center of mass (real dimerization is exothermic; that
@@ -48,11 +40,11 @@ GasLab's "total KE conserved exactly" framing, and does so on purpose:
   actually the more accurate physical picture for what "B/A^2 should be
   constant at equilibrium" (the mass-action law, Kc) describes: a
   constant-temperature reaction vessel, not an insulated one. Ordinary
-  elastic collisions (collide_with(), copied from gas_lab.py) remain
-  exactly momentum- AND energy-conserving classical mechanics throughout,
-  same as GasLab -- only the reactive events touch the thermal bath.
-  Mass is exactly conserved always: count_a + 2 * count_b never changes
-  (see total_a_equivalent below), regardless of temperature bookkeeping.
+  elastic collisions (collide_with()) remain exactly momentum- AND
+  energy-conserving classical mechanics throughout -- only the reactive
+  events touch the thermal bath. Mass is exactly conserved always:
+  count_a + 2 * count_b never changes (see total_a_equivalent below),
+  regardless of temperature bookkeeping.
 
 Units: temperature and particle-mass are labeled K and amu because that's
 the intuitive way to think about them (raise the temperature slider, the
@@ -65,7 +57,7 @@ K" doesn't correspond to a literal 500 kelvin the way "10 amu" doesn't
 correspond to a literal 10 atomic mass units -- they're consistent with
 each other and with speed/energy, just not calibrated against real-world
 SI constants. Box dimensions (box_size) are a legitimate, dimensionless
-"%" of the world's half-width, same as GasLab's.
+"%" of the world's half-width.
 """
 
 from engine.netlogo import *
@@ -222,24 +214,9 @@ def calculate_tick_delta():
 
 
 def bounce(p):  # particle procedure
-    # NOT gas_lab.py's original approach (`patch_ahead(1)`, checking
-    # whether the rounded patch exactly 1 unit ahead happens to be a wall
-    # patch) -- that has a real gap: the wall is only 1 patch wide, so
-    # depending on the particle's own fractional position, a *rounded*
-    # 1-unit lookahead can land on the patch just past the wall instead of
-    # on the wall itself, missing the reflection entirely. At everyday
-    # speeds a particle then gets caught by the *next* tick's check before
-    # it travels far -- but at high speed/temperature a single tick can
-    # cover most of that gap, and a particle that slips through it keeps
-    # sailing outward, undetected (nothing past the wall is colored
-    # yellow), until it fetches up against the world's own hard edge --
-    # this is the "stuck in the gold frame" symptom, just it's actually
-    # stuck *just outside* the frame, not in it. (Traced to this exact
-    # mechanism with a fixed seed at temperature=500 before fixing it.)
-    # Checking the *actual* upcoming position numerically, rather than
-    # rounding to a patch and checking its color, has no such gap: it
-    # reflects as soon as this tick's real move would carry the particle
-    # into the wall band, at any speed.
+    # Checks the exact upcoming position, not a rounded 1-unit lookahead
+    # -- the wall is only 1 patch wide, so rounding could occasionally
+    # miss it at high speed and let a particle sail straight through.
     dx, dy = _components(p.speed * tick_delta, p.heading)
     hit_x = abs(p.xcor + dx) >= box_edge - 0.5  # about to enter the left/right wall
     hit_y = abs(p.ycor + dy) >= box_edge - 0.5  # about to enter the top/bottom wall
@@ -261,9 +238,8 @@ def move(p):  # particle procedure
 
 
 def check_for_collision(p):  # particle procedure
-    # Same "exactly one other particle on this patch" rule as gas_lab.py's
-    # check_for_collision() (see its comment for why) -- unchanged here,
-    # just generalized to whichever breed(s) the two particles are.
+    # Only reacts/collides when exactly one other particle shares this
+    # patch, generalized to whichever breed(s) the two particles are.
     others_here = p.other(p.here(turtles))
     if others_here.count() != 1:
         return
@@ -303,12 +279,10 @@ def check_for_collision(p):  # particle procedure
 
 
 def collide_with(p, other):  # particle procedure
-    # THE HEART OF THE PARTICLE SIMULATION -- identical to gas_lab.py's
-    # collide_with() (see its comments for the phase-by-phase derivation):
-    # an exact elastic collision between two point particles of possibly
-    # different mass. Unlike gas_lab.py, this doesn't end with a recolor()
-    # -- here color encodes species (A vs B), not speed, and an elastic
-    # collision never changes a particle's species.
+    # THE HEART OF THE PARTICLE SIMULATION: an exact elastic collision
+    # between two point particles of possibly different mass. Doesn't end
+    # with a recolor() -- here color encodes species (A vs B), not speed,
+    # and an elastic collision never changes a particle's species.
     mass2 = other.mass
     speed2 = other.speed
     heading2 = other.heading
