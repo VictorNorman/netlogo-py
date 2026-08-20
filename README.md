@@ -2,7 +2,7 @@
 
 A Python runtime for [NetLogo](https://ccl.northwestern.edu/netlogo/)-style agent-based models, plus a small FastAPI server and a zero-build browser frontend to run and watch them — either on the server or **entirely inside the browser** via [Pyodide](https://pyodide.org/) (CPython compiled to WebAssembly), with the model's source live-editable and re-runnable without a page reload.
 
-Twelve classic NetLogo Sample Models are ported so far — **Fire**, **Flocking**, **GasLab**, **Ants**, **Wolf Sheep Predation**, **Virus on a Network**, **Life**, **Sierpinski Simple**, **Preferential Attachment**, **Rock Paper Scissors**, **Random Basic**, and **Diffusion on a Directed Network** — each checked against its real `.nlogox` source line by line, not reimplemented from memory.
+Twelve classic NetLogo Sample Models are ported so far — **Fire**, **Flocking**, **GasLab**, **Ants**, **Wolf Sheep Predation**, **Virus on a Network**, **Life**, **Sierpinski Simple**, **Preferential Attachment**, **Rock Paper Scissors**, **Random Basic**, and **Diffusion on a Directed Network** — each checked against its real `.nlogox` source line by line, not reimplemented from memory. A thirteenth model, **Dimerizing Gas**, is original to this app rather than a port — see below.
 
 ```
 python -m uvicorn server.main:app --reload --port 8765
@@ -10,7 +10,7 @@ python -m uvicorn server.main:app --reload --port 8765
 
 Then open `http://localhost:8765`, pick a model, hit **setup** then **go**.
 
-## The twelve models
+## The twelve ported models
 
 | Model | What it shows | Real source |
 |---|---|---|
@@ -29,6 +29,10 @@ Then open `http://localhost:8765`, pick a model, hit **setup** then **go**.
 
 Every model documents its own deliberate deviations from the real source in its module docstring (an explicit boolean instead of color-encoded turtle state, a simplified color model, app-specific monitors like Flocking's `order_parameter`, etc.) — nothing is silently dropped.
 
+### A thirteenth, original model
+
+**Dimerizing Gas** (`models/dimerizing_gas.py`) isn't a NetLogo Sample Models port — there's no real `.nlogox` source to check it against. It's GasLab's hard-sphere box physics with one addition: the reversible reaction 2 A ⇌ B, built for a dynamic-equilibrium chemistry demo. Two colliding A particles can combine into a B (momentum-conserving, releasing their relative kinetic energy — real dimerization is exothermic); a B can dissociate back into two A's, drawing the energy for that from a thermal bath at the current `temperature`. Mass is exactly conserved always (`count_a + 2*count_b` never changes); the `Kc` monitor is a trailing 20-tick average of `B / A²`, since the raw ratio jitters too much tick to tick to show convergence on its own. It's also the first model here to render its turtles as circles (`shape`, alongside `size`, now flow all the way through `turtles_grid()` to the frontend) rather than the usual heading-indicating triangle, and the first to declare more than one `plot_widget()` (a population history and a live speed histogram, both engines and `static/app.js` generalized to a list to support this).
+
 ## Two engines, one model source
 
 The **same** model files run two ways:
@@ -42,7 +46,7 @@ Switching the engine dropdown swaps the transport; the rendering code (`drawPatc
 
 ```
 engine/netlogo.py     the runtime: primitives, world state, widget system, auto_state()
-models/*.py           twelve ported models
+models/*.py           twelve ported models + one original (Dimerizing Gas)
 server/main.py        FastAPI app: model registry + HTTP API + static file serving
 static/               zero-build frontend: index.html, app.js, style.css, pyodide-worker.js
 ```
@@ -79,7 +83,7 @@ Named colors as plain floats (`black`, `gray`, `green`, `red`, `white`, `violet`
 `slider`, `switch`, `chooser`, `monitor`, `button`, `plot_widget`/`plot`/`plotxy`/`histogram` — each is a plain function call at module load time that both returns the widget's default value *and* registers its metadata, so the model file is simultaneously the model and its own UI declaration. No separate spec to keep in sync. A plot pen defaults to an ordinary line/time-series pen; `plot_widget(..., pens=[(name, color, "bar")])` declares a real histogram-mode pen instead, fed by `histogram(pen, values)` (see Preferential Attachment).
 
 **`auto_state()`**
-NetLogo's own IDE never makes you write a serialization function — it just inspects turtles/patches/links/pen-drawing/plots directly to render them. `state()` only exists in this app because it needs one JSON snapshot per tick; `auto_state()` builds that snapshot automatically by reading whatever a model has already declared (every slider/switch/chooser value, every monitor — resolved by calling it if it's a function, else using it directly — the patch/turtle/link/drawing grids, plot data). Ten of the twelve models don't define `state()` at all; the other two override just the one or two things `auto_state()` can't guess (Ants' chemical-gradient patch coloring, Fire suppressing turtles it has but doesn't want drawn).
+NetLogo's own IDE never makes you write a serialization function — it just inspects turtles/patches/links/pen-drawing/plots directly to render them. `state()` only exists in this app because it needs one JSON snapshot per tick; `auto_state()` builds that snapshot automatically by reading whatever a model has already declared (every slider/switch/chooser value, every monitor — resolved by calling it if it's a function, else using it directly — the patch/turtle/link/drawing grids, plot data). Eleven of the thirteen models don't define `state()` at all; the other two override just the one or two things `auto_state()` can't guess (Ants' chemical-gradient patch coloring, Fire suppressing turtles it has but doesn't want drawn).
 
 ### Widget system → automatic UI
 
@@ -165,4 +169,4 @@ Open `http://localhost:8765`. No build step, no bundler — `static/*.js`/`*.css
 
 ## Attribution
 
-The twelve models here are Python ports of designs from NetLogo's own Sample Models library (Uri Wilensky and the CCL, Northwestern University; individual model copyrights are noted in each `.nlogox` file). This repository is an independent educational reimplementation of their *behavior* in a from-scratch Python runtime — it does not include or depend on NetLogo itself.
+Twelve of the thirteen models here are Python ports of designs from NetLogo's own Sample Models library (Uri Wilensky and the CCL, Northwestern University; individual model copyrights are noted in each `.nlogox` file). This repository is an independent educational reimplementation of their *behavior* in a from-scratch Python runtime — it does not include or depend on NetLogo itself. The thirteenth, Dimerizing Gas, is original to this app (see above).

@@ -113,6 +113,9 @@ RANDOM_BASIC_WORLD = _world_snapshot()
 import models.diffusion_on_directed_network as diffusion_module
 
 DIFFUSION_WORLD = _world_snapshot()
+import models.dimerizing_gas as dimerizing_gas_module
+
+DIMERIZING_GAS_WORLD = _world_snapshot()
 
 BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -181,16 +184,18 @@ def _choosers_from_module(module):
     ]
 
 
-def _plot_from_module(module):
-    """Same idea as _sliders_from_module(), for a plot_widget() declaration
-    -- at most one per model so far, so this returns a single dict (or
-    None) rather than a list. The live per-pen data isn't here -- that's
+def _plots_from_module(module):
+    """Same idea as _sliders_from_module(), for plot_widget() declarations
+    -- a model can declare more than one (see models/dimerizing_gas.py's
+    speed histogram alongside its population plot), so this returns every
+    one, in declaration order. The live per-pen data isn't here -- that's
     state()'s "plot_data" key, refreshed every tick like any other
-    monitor value."""
-    for widget in getattr(module, "__widgets__", []):
-        if widget["type"] == "plot":
-            return {key: value for key, value in widget.items() if key != "type"}
-    return None
+    monitor value, shared across all of a model's plots by pen name."""
+    return [
+        {key: value for key, value in widget.items() if key != "type"}
+        for widget in getattr(module, "__widgets__", [])
+        if widget["type"] == "plot"
+    ]
 
 
 MODEL_REGISTRY = {
@@ -206,7 +211,7 @@ MODEL_REGISTRY = {
         "switches": _switches_from_module(fire_module),
         "choosers": _choosers_from_module(fire_module),
         "monitors": _monitors_from_module(fire_module),
-        "plot": _plot_from_module(fire_module),
+        "plots": _plots_from_module(fire_module),
         "info": """
             <h2>Fire</h2>
             <p>
@@ -238,7 +243,7 @@ MODEL_REGISTRY = {
         "switches": _switches_from_module(flocking_module),
         "choosers": _choosers_from_module(flocking_module),
         "monitors": _monitors_from_module(flocking_module),
-        "plot": _plot_from_module(flocking_module),
+        "plots": _plots_from_module(flocking_module),
         "info": """
             <h2>Flocking</h2>
             <p>
@@ -276,7 +281,7 @@ MODEL_REGISTRY = {
         "switches": _switches_from_module(gas_lab_module),
         "choosers": _choosers_from_module(gas_lab_module),
         "monitors": _monitors_from_module(gas_lab_module),
-        "plot": _plot_from_module(gas_lab_module),
+        "plots": _plots_from_module(gas_lab_module),
         "info": """
             <h2>GasLab</h2>
             <p>
@@ -311,7 +316,7 @@ MODEL_REGISTRY = {
         "switches": _switches_from_module(ants_module),
         "choosers": _choosers_from_module(ants_module),
         "monitors": _monitors_from_module(ants_module),
-        "plot": _plot_from_module(ants_module),
+        "plots": _plots_from_module(ants_module),
         "info": """
             <h2>Ants</h2>
             <p>
@@ -346,7 +351,7 @@ MODEL_REGISTRY = {
         "switches": _switches_from_module(wolf_sheep_module),
         "choosers": _choosers_from_module(wolf_sheep_module),
         "monitors": _monitors_from_module(wolf_sheep_module),
-        "plot": _plot_from_module(wolf_sheep_module),
+        "plots": _plots_from_module(wolf_sheep_module),
         "info": """
             <h2>Wolf Sheep Predation</h2>
             <p>
@@ -384,7 +389,7 @@ MODEL_REGISTRY = {
         "switches": _switches_from_module(virus_module),
         "choosers": _choosers_from_module(virus_module),
         "monitors": _monitors_from_module(virus_module),
-        "plot": _plot_from_module(virus_module),
+        "plots": _plots_from_module(virus_module),
         "info": """
             <h2>Virus on a Network</h2>
             <p>
@@ -420,7 +425,7 @@ MODEL_REGISTRY = {
         "switches": _switches_from_module(life_module),
         "choosers": _choosers_from_module(life_module),
         "monitors": _monitors_from_module(life_module),
-        "plot": _plot_from_module(life_module),
+        "plots": _plots_from_module(life_module),
         "info": """
             <h2>Life</h2>
             <p>
@@ -454,7 +459,7 @@ MODEL_REGISTRY = {
         "switches": _switches_from_module(sierpinski_module),
         "choosers": _choosers_from_module(sierpinski_module),
         "monitors": _monitors_from_module(sierpinski_module),
-        "plot": _plot_from_module(sierpinski_module),
+        "plots": _plots_from_module(sierpinski_module),
         "info": """
             <h2>Sierpinski Simple</h2>
             <p>
@@ -487,7 +492,7 @@ MODEL_REGISTRY = {
         "switches": _switches_from_module(preferential_attachment_module),
         "choosers": _choosers_from_module(preferential_attachment_module),
         "monitors": _monitors_from_module(preferential_attachment_module),
-        "plot": _plot_from_module(preferential_attachment_module),
+        "plots": _plots_from_module(preferential_attachment_module),
         "info": """
             <h2>Preferential Attachment</h2>
             <p>
@@ -521,7 +526,7 @@ MODEL_REGISTRY = {
         "switches": _switches_from_module(rock_paper_scissors_module),
         "choosers": _choosers_from_module(rock_paper_scissors_module),
         "monitors": _monitors_from_module(rock_paper_scissors_module),
-        "plot": _plot_from_module(rock_paper_scissors_module),
+        "plots": _plots_from_module(rock_paper_scissors_module),
         "info": """
             <h2>Rock Paper Scissors</h2>
             <p>
@@ -555,7 +560,7 @@ MODEL_REGISTRY = {
         "switches": _switches_from_module(random_basic_module),
         "choosers": _choosers_from_module(random_basic_module),
         "monitors": _monitors_from_module(random_basic_module),
-        "plot": _plot_from_module(random_basic_module),
+        "plots": _plots_from_module(random_basic_module),
         "info": """
             <h2>Random Basic</h2>
             <p>
@@ -589,7 +594,7 @@ MODEL_REGISTRY = {
         "switches": _switches_from_module(diffusion_module),
         "choosers": _choosers_from_module(diffusion_module),
         "monitors": _monitors_from_module(diffusion_module),
-        "plot": _plot_from_module(diffusion_module),
+        "plots": _plots_from_module(diffusion_module),
         "info": """
             <h2>Diffusion on a Directed Network</h2>
             <p>
@@ -613,6 +618,59 @@ MODEL_REGISTRY = {
             "vectorized": {
                 "module": diffusion_module,
                 "source_file": "models/diffusion_on_directed_network.py",
+            },
+        },
+    },
+    "dimerizing_gas": {
+        "label": "Dimerizing Gas (2A ⇌ B)",
+        "world": DIMERIZING_GAS_WORLD,
+        "render": "patches_and_turtles",
+        "sliders": _sliders_from_module(dimerizing_gas_module),
+        "switches": _switches_from_module(dimerizing_gas_module),
+        "choosers": _choosers_from_module(dimerizing_gas_module),
+        "monitors": _monitors_from_module(dimerizing_gas_module),
+        "plots": _plots_from_module(dimerizing_gas_module),
+        "info": """
+            <h2>Dimerizing Gas (2A &#8652; B)</h2>
+            <p>
+              An original model for this app (not a NetLogo Sample Models port)
+              -- the same hard-sphere box-of-particles physics as
+              <em>GasLab</em>, plus a reversible reaction: two A particles
+              (light blue) that collide may fuse into one B particle (red,
+              drawn larger -- it has twice the mass), and a B particle that
+              hits anything -- another particle or a wall -- may fall back
+              apart into two A's. <code>dimerization-chance</code> and
+              <code>dissociation-chance</code> control how likely each event
+              is, per collision.
+            </p>
+            <p>
+              This is a classic demonstration of <strong>dynamic
+              equilibrium</strong>: even though individual molecules keep
+              reacting in both directions constantly, the population counts
+              (see the <em>Populations</em> plot) settle into a stable
+              balance where the forward and reverse reaction rates match.
+              <code>A + 2&times;B</code> (the total A-equivalent mass) never
+              changes -- only how it's distributed between the two species
+              does. If the reaction is behaving like real mass-action
+              chemistry, <code>B / A&sup2;</code> (the <em>Kc</em> monitor)
+              should hold roughly steady once equilibrium is reached, however
+              you got there -- try starting from all-A (<code>initial-B =
+              0</code>) versus starting with some B already present.
+            </p>
+            <p>
+              The <em>Speed Distribution</em> histogram (the first plot in
+              this app to share its canvas with a second plot_widget) shows
+              each species' molecular speeds converging toward a Maxwell-
+              Boltzmann-shaped spread, exactly like GasLab's -- <code>
+              temperature</code> sets the initial speeds (equal average
+              kinetic energy per particle for both species) and also scales
+              how energetic a freshly-dissociated pair of A's comes apart.
+            </p>
+        """,
+        "engines": {
+            "vectorized": {
+                "module": dimerizing_gas_module,
+                "source_file": "models/dimerizing_gas.py",
             },
         },
     },
@@ -693,7 +751,7 @@ def list_models():
                 "switches": entry["switches"],
                 "choosers": entry["choosers"],
                 "monitors": entry["monitors"],
-                "plot": entry["plot"],
+                "plots": entry["plots"],
                 "info": entry["info"],
             }
             for key, entry in MODEL_REGISTRY.items()

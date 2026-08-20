@@ -5,11 +5,7 @@ const engineSelect = document.getElementById("engine-select");
 const modelSelect = document.getElementById("model-select");
 const slidersContainer = document.getElementById("sliders-container");
 const monitorsContainer = document.getElementById("monitors-container");
-const plotContainer = document.getElementById("plot-container");
-const plotCanvas = document.getElementById("plot-canvas");
-const plotCtx = plotCanvas.getContext("2d");
-const plotTitle = document.getElementById("plot-title");
-const plotLegend = document.getElementById("plot-legend");
+const plotsContainer = document.getElementById("plots-container");
 const speedSlider = document.getElementById("speed-slider");
 const speedLabel = document.getElementById("speed-label");
 const btnSetup = document.getElementById("btn-setup");
@@ -42,6 +38,7 @@ const WASM_CLASS_NAMES = {
   rock_paper_scissors: null,
   random_basic: null,
   diffusion_on_directed_network: null,
+  dimerizing_gas: null,
 };
 
 // Not a plain setInterval: doStep() is an async network round-trip, and a
@@ -58,7 +55,7 @@ let goRunning = false;
 let goTimeoutId = null;
 let specsByKey = {};
 let currentEngine = "vectorized";
-let currentPlotSpec = null; // the active model's plot_widget() declaration, or null
+let plotStates = []; // one {spec, canvas, ctx, legendEl} per plot_widget() the active model declared
 let lastState = null; // most recent drawState() input, so mouse handlers can invert worldToCanvas()
 
 function currentParams() {
@@ -83,7 +80,10 @@ function renderControls(spec) {
 
     const label = document.createElement("div");
     label.className = "widget-label";
-    label.textContent = slider.label;
+    // slider() lets a model declare units= (e.g. "%", "K", "amu") -- shown
+    // here as "label (units)", the same convention real NetLogo itself
+    // uses for its own unit-bearing sliders.
+    label.textContent = slider.units ? `${slider.label} (${slider.units})` : slider.label;
 
     const row = document.createElement("div");
     row.className = "slider-row";
@@ -178,12 +178,23 @@ function renderControls(spec) {
     monitorsContainer.appendChild(widget);
   });
 
-  currentPlotSpec = spec.plot || null;
-  if (currentPlotSpec) {
-    plotContainer.classList.remove("hidden");
-    plotTitle.textContent = currentPlotSpec.title;
-    plotLegend.innerHTML = "";
-    currentPlotSpec.pens.forEach((pen) => {
+  plotsContainer.innerHTML = "";
+  plotStates = (spec.plots || []).map((plotSpec) => {
+    const widget = document.createElement("div");
+    widget.className = "widget plot-widget";
+
+    const title = document.createElement("div");
+    title.className = "widget-label";
+    title.textContent = plotSpec.title;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 250;
+    canvas.height = 160;
+    const ctx = canvas.getContext("2d");
+
+    const legend = document.createElement("div");
+    legend.className = "plot-legend";
+    plotSpec.pens.forEach((pen) => {
       const item = document.createElement("span");
       item.className = "plot-legend-item";
       const swatch = document.createElement("span");
@@ -191,13 +202,23 @@ function renderControls(spec) {
       swatch.style.background = pen.color;
       item.appendChild(swatch);
       item.appendChild(document.createTextNode(pen.name));
-      plotLegend.appendChild(item);
+      legend.appendChild(item);
     });
-    plotCtx.fillStyle = "#ffffff";
-    plotCtx.fillRect(0, 0, plotCanvas.width, plotCanvas.height);
-  } else {
-    plotContainer.classList.add("hidden");
-  }
+
+    widget.appendChild(title);
+    widget.appendChild(canvas);
+    widget.appendChild(legend);
+    plotsContainer.appendChild(widget);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    return {
+      spec: plotSpec,
+      canvas,
+      ctx,
+    };
+  });
 
   infoText.innerHTML = spec.info;
 }
@@ -226,12 +247,18 @@ function penBarWidth(points) {
   return points.length > 1 ? points[1][0] - points[0][0] : 1;
 }
 
-function drawPlot(plotData, plotSpec) {
+// Keeps tick-number text short without hiding real precision: whole
+// numbers print bare, anything else gets 2 decimal places.
+function formatTick(v) {
+  return Number.isInteger(v) ? String(v) : v.toFixed(2);
+}
+
+function drawPlot(plotData, plotSpec, canvas, ctx) {
   if (!plotSpec) {
     return;
   }
-  plotCtx.fillStyle = "#ffffff";
-  plotCtx.fillRect(0, 0, plotCanvas.width, plotCanvas.height);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   const xs = [];
   const ys = [];
@@ -252,12 +279,20 @@ function drawPlot(plotData, plotSpec) {
 
   const [xMin, xMax] = minMax([...xs, 0]);
   const [yMin, yMax] = minMax([...ys, 0]);
-  const pad = 4;
-  const w = plotCanvas.width - pad * 2;
-  const h = plotCanvas.height - pad * 2;
+
+  // Margins carve out room around the plot area for axis names (x_label/
+  // y_label, from plot_widget()) and the min/max value at each axis's
+  // ends -- plotted data only ever goes inside [marginLeft, marginLeft+w]
+  // x [marginTop, marginTop+h].
+  const marginLeft = 28;
+  const marginRight = 6;
+  const marginTop = 5;
+  const marginBottom = 26;
+  const w = canvas.width - marginLeft - marginRight;
+  const h = canvas.height - marginTop - marginBottom;
   const toPx = (x, y) => [
-    pad + ((x - xMin) / (xMax - xMin || 1)) * w,
-    pad + h - ((y - yMin) / (yMax - yMin || 1)) * h,
+    marginLeft + ((x - xMin) / (xMax - xMin || 1)) * w,
+    marginTop + h - ((y - yMin) / (yMax - yMin || 1)) * h,
   ];
 
   plotSpec.pens.forEach((pen) => {
@@ -268,28 +303,71 @@ function drawPlot(plotData, plotSpec) {
 
     if (pen.mode === "bar") {
       const barWidth = penBarWidth(points);
-      plotCtx.fillStyle = pen.color;
+      ctx.fillStyle = pen.color;
       points.forEach(([x, y]) => {
         const [px1, py1] = toPx(x, y);
         const [px2, py2] = toPx(x + barWidth, 0);
-        plotCtx.fillRect(Math.min(px1, px2), Math.min(py1, py2), Math.abs(px2 - px1), Math.abs(py2 - py1));
+        ctx.fillRect(Math.min(px1, px2), Math.min(py1, py2), Math.abs(px2 - px1), Math.abs(py2 - py1));
       });
       return;
     }
 
-    plotCtx.strokeStyle = pen.color;
-    plotCtx.lineWidth = 1.5;
-    plotCtx.beginPath();
+    ctx.strokeStyle = pen.color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
     points.forEach(([x, y], i) => {
       const [px, py] = toPx(x, y);
       if (i === 0) {
-        plotCtx.moveTo(px, py);
+        ctx.moveTo(px, py);
       } else {
-        plotCtx.lineTo(px, py);
+        ctx.lineTo(px, py);
       }
     });
-    plotCtx.stroke();
+    ctx.stroke();
   });
+
+  // Axis lines.
+  ctx.strokeStyle = "#999999";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(marginLeft, marginTop);
+  ctx.lineTo(marginLeft, marginTop + h);
+  ctx.lineTo(marginLeft + w, marginTop + h);
+  ctx.stroke();
+
+  // Min/max value at each axis's ends -- a real (if minimal) numeric
+  // scale, not just a label naming the axis.
+  ctx.fillStyle = "#555555";
+  ctx.font = "9px sans-serif";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+  ctx.fillText(formatTick(yMax), marginLeft - 2, marginTop);
+  ctx.textBaseline = "bottom";
+  ctx.fillText(formatTick(yMin), marginLeft - 2, marginTop + h);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillText(formatTick(xMin), marginLeft, marginTop + h + 2);
+  ctx.textAlign = "right";
+  ctx.fillText(formatTick(xMax), marginLeft + w, marginTop + h + 2);
+
+  // Axis names (plot_widget()'s x_label/y_label), each model's own choice
+  // of units included right in the string (e.g. "time (ticks)").
+  ctx.fillStyle = "#333333";
+  ctx.font = "10px sans-serif";
+  if (plotSpec.x_label) {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(plotSpec.x_label, marginLeft + w / 2, canvas.height);
+  }
+  if (plotSpec.y_label) {
+    ctx.save();
+    ctx.translate(9, marginTop + h / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(plotSpec.y_label, 0, 0);
+    ctx.restore();
+  }
 }
 
 function drawPatches(state) {
@@ -385,28 +463,15 @@ function drawDrawing(state) {
 
 function drawTurtles(state) {
   state.turtles.forEach((t) => {
-    const [x, y, heading, extra, label, size] = t;
+    const [x, y, heading, extra, label, size, shape] = t;
     const [px, py] = worldToCanvas(state, x, y);
     const rad = (heading * Math.PI) / 180;
 
-    // NetLogo heading: 0 = up (screen -y), increases clockwise.
-    const dirX = Math.sin(rad);
-    const dirY = -Math.cos(rad);
-    const perpX = -dirY;
-    const perpY = dirX;
-    // `size` (NetLogo's `set size ...`) scales the triangle -- 1 (every
+    // `size` (NetLogo's `set size ...`) scales the marker -- 1 (every
     // turtle's default, and every row from before turtles_grid() started
     // sending a 6th element) draws at the same fixed size as always.
     const sizeScale = size === undefined || size === null ? 1 : size;
-    const length = 7 * sizeScale;
     const width = 3.5 * sizeScale;
-
-    const tipX = px + dirX * length;
-    const tipY = py + dirY * length;
-    const baseLX = px - dirX * length * 0.6 + perpX * width;
-    const baseLY = py - dirY * length * 0.6 + perpY * width;
-    const baseRX = px - dirX * length * 0.6 - perpX * width;
-    const baseRY = py - dirY * length * 0.6 - perpY * width;
 
     // The 4th element's shape says what it means: missing (Flocking) draws
     // a fixed green; a boolean (Ants) flags a turtle carrying food; a
@@ -420,12 +485,36 @@ function drawTurtles(state) {
       ctx.fillStyle = extra ? "#ff5555" : "#e8c39e";
     }
 
-    ctx.beginPath();
-    ctx.moveTo(tipX, tipY);
-    ctx.lineTo(baseLX, baseLY);
-    ctx.lineTo(baseRX, baseRY);
-    ctx.closePath();
-    ctx.fill();
+    if (shape === "circle") {
+      // A plain filled circle -- no heading indicator, since round
+      // particles (e.g. models/dimerizing_gas.py) have no visible
+      // orientation to show.
+      const radius = 4 * sizeScale;
+      ctx.beginPath();
+      ctx.arc(px, py, radius, 0, 2 * Math.PI);
+      ctx.fill();
+    } else {
+      // NetLogo heading: 0 = up (screen -y), increases clockwise.
+      const dirX = Math.sin(rad);
+      const dirY = -Math.cos(rad);
+      const perpX = -dirY;
+      const perpY = dirX;
+      const length = 7 * sizeScale;
+
+      const tipX = px + dirX * length;
+      const tipY = py + dirY * length;
+      const baseLX = px - dirX * length * 0.6 + perpX * width;
+      const baseLY = py - dirY * length * 0.6 + perpY * width;
+      const baseRX = px - dirX * length * 0.6 - perpX * width;
+      const baseRY = py - dirY * length * 0.6 - perpY * width;
+
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(baseLX, baseLY);
+      ctx.lineTo(baseRX, baseRY);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     // NetLogo's `set label ...` -- floating text just above/right of the
     // turtle, same corner real NetLogo uses.
@@ -467,7 +556,7 @@ function drawState(state) {
     drawTurtles(state);
   }
   if (state.plot_data) {
-    drawPlot(state.plot_data, currentPlotSpec);
+    plotStates.forEach((ps) => drawPlot(state.plot_data, ps.spec, ps.canvas, ps.ctx));
   }
 
   document.querySelectorAll("[data-monitor]").forEach((el) => {

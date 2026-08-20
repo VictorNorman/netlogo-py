@@ -1323,19 +1323,23 @@ def _default_turtle_color(t):
 
 def turtles_grid(color_fn=None):
     """The current turtles as a list of [xcor, ycor, heading, extra, label,
-    size] rows -- what state() hands the frontend as "turtles". Turtles
-    with `.hidden` set (hide_turtle()) are left out entirely, matching
-    real NetLogo's own view. `color_fn`, if given, is a plain function
-    taking a turtle and returning its `extra` value -- an [r, g, b]
-    color, or any other value drawTurtles() (static/app.js) understands,
-    e.g. a carrying-food flag -- the default is the turtle's real color
-    (color_to_rgb(t.color)). `label` is the turtle's own `.label`
-    (NetLogo's `set label ...`), or null if never set -- drawTurtles()
-    renders it as floating text next to the turtle. `size` (NetLogo's
-    `set size ...`) scales how big it's drawn -- 1.0 (the default for
-    every turtle) matches the fixed size every model used to draw at."""
+    size, shape] rows -- what state() hands the frontend as "turtles".
+    Turtles with `.hidden` set (hide_turtle()) are left out entirely,
+    matching real NetLogo's own view. `color_fn`, if given, is a plain
+    function taking a turtle and returning its `extra` value -- an
+    [r, g, b] color, or any other value drawTurtles() (static/app.js)
+    understands, e.g. a carrying-food flag -- the default is the turtle's
+    real color (color_to_rgb(t.color)). `label` is the turtle's own
+    `.label` (NetLogo's `set label ...`), or null if never set --
+    drawTurtles() renders it as floating text next to the turtle. `size`
+    (NetLogo's `set size ...`) scales how big it's drawn -- 1.0 (the
+    default for every turtle) matches the fixed size every model used to
+    draw at. `shape` (NetLogo's `set shape ...` / set_default_shape()) is
+    mostly decorative here -- drawTurtles() only special-cases "circle"
+    (see models/dimerizing_gas.py), everything else still draws the
+    original fixed triangle."""
     color_fn = color_fn or _default_turtle_color
-    return [[t.xcor, t.ycor, t.heading, color_fn(t), t.label, t.size] for t in turtles if not t.hidden]
+    return [[t.xcor, t.ycor, t.heading, color_fn(t), t.label, t.size, t.shape] for t in turtles if not t.hidden]
 
 
 def _default_link_color(link):
