@@ -47,12 +47,12 @@ Switching the engine dropdown swaps the transport; the rendering code (`drawPatc
 ```
 engine/netlogo.py     the runtime: primitives, world state, widget system, auto_state()
 models/*.py           twelve ported models + one original (Dimerizing Gas)
-models/registry.json  which models are active, their key/label, and dropdown order
+models/registry.json  which models are active and their key/label (dropdown is sorted by label)
 server/main.py        FastAPI app: model registry + HTTP API + static file serving
 static/               zero-build frontend: index.html, app.js, style.css, pyodide-worker.js
 ```
 
-Adding a model doesn't require touching `server/main.py` at all: drop the new `models/<key>.py` (with a module-level `INFO = """<h2>...</h2>..."""` HTML blurb next to its docstring, same as every other model) and add one `{"key": "<key>", "label": "..."}` to `models/registry.json`. Everything else in its registry entry — world size/wrapping, every slider/switch/chooser/monitor/plot, which source file the Code tab shows — is read straight off the module itself.
+Adding a model doesn't require touching `server/main.py` at all: drop the new `models/<key>.py` (with a module-level `INFO = """<h2>...</h2>..."""` HTML blurb next to its docstring, same as every other model) and add one `{"key": "<key>", "label": "..."}` to `models/registry.json`, in any order — the dropdown is always sorted by label. Everything else in its registry entry — world size/wrapping, every slider/switch/chooser/monitor/plot, which source file the Code tab shows — is read straight off the module itself.
 
 ### `engine/netlogo.py` — the runtime
 

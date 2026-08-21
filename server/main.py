@@ -24,11 +24,12 @@ MODEL_REGISTRY itself is built from models/registry.json plus each
 model's own module -- see the loop right after _plots_from_module() below.
 registry.json is the only thing that needs editing to add a new model
 beyond writing models/<key>.py itself: it just lists each model's key and
-display label, in dropdown order. Everything else -- world size/wrapping,
-every slider/switch/chooser/monitor/plot, and the info-tab HTML (a plain
-INFO = "..." string at the top of the model's own file, easier to write
-than escaped HTML embedded in a JSON string) -- comes from the module
-that key names.
+display label (any order -- MODEL_REGISTRY sorts by label itself, so the
+dropdown is always alphabetical regardless of where a new entry gets
+appended). Everything else -- world size/wrapping, every slider/switch/
+chooser/monitor/plot, and the info-tab HTML (a plain INFO = "..." string
+at the top of the model's own file, easier to write than escaped HTML
+embedded in a JSON string) -- comes from the module that key names.
 
 Each model is available on one server-side engine, "server-side" -- every
 model is a class-less module of free functions operating on plain
@@ -89,8 +90,9 @@ def _world_snapshot():
 
 
 # models/registry.json lists every model's key (== its models/<key>.py
-# filename, minus the extension) and display label, in dropdown order --
-# see MODEL_REGISTRY below for where the rest of each entry comes from.
+# filename, minus the extension) and display label -- see MODEL_REGISTRY
+# below for where the rest of each entry comes from (and where dropdown
+# order is actually decided; this file's own order doesn't matter).
 # Imported one at a time, in file order, so _world_snapshot() right after
 # each import still captures that model's own world config correctly
 # (see its docstring -- correctness doesn't actually depend on this order,
@@ -210,7 +212,10 @@ MODEL_REGISTRY = {
             },
         },
     }
-    for entry in _REGISTRY_SPEC
+    # Alphabetical by label (not registry.json's own file order) -- so the
+    # dropdown always reads sorted regardless of where a new model's entry
+    # gets appended to that file.
+    for entry in sorted(_REGISTRY_SPEC, key=lambda e: e["label"].lower())
 }
 
 active_model_key = "flocking"
