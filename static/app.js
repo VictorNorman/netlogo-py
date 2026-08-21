@@ -575,6 +575,15 @@ function setRunningUi(running) {
   } else {
     btnGo.classList.remove("running");
   }
+  // A slider only takes effect at the next setup() (see doStep()/doSetup()
+  // above -- go/step never sends slider values at all), so dragging one
+  // mid-run would silently do nothing; disabling them while running makes
+  // that obvious instead of surprising. The speed-widget's own slider
+  // isn't a ".param-slider" (see renderControls()) -- it controls the go
+  // loop's real-time pacing, not a model parameter, so it stays enabled.
+  document.querySelectorAll(".param-slider").forEach((el) => {
+    el.disabled = running;
+  });
 }
 
 function stopGoLoop() {
