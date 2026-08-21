@@ -1256,7 +1256,7 @@ def plot_data():
     return {pen: [list(point) for point in points] for pen, points in _plot_pens.items()}
 
 
-def histogram(pen, values, bin_width=1):
+def histogram(pen, values, bin_width: float = 1):
     """NetLogo's `histogram <list>`, run from inside a "bar"-mode pen's
     update code (see plot_widget()): bins `values` into a fresh bar chart
     for the named pen, REPLACING whatever that pen showed before -- a
