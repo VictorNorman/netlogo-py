@@ -22,6 +22,25 @@ Deliberate deviations from the real source: none -- this is a direct,
 line-by-line transliteration.
 """
 
+INFO = """
+<h2>Rock Paper Scissors</h2>
+<p>
+  A Python port of NetLogo's classic <em>Rock Paper Scissors</em>
+  model. Every patch is red, green, blue, or blank; red beats
+  green, green beats blue, blue beats red. Each tick, random
+  pairs of neighboring patches swap, reproduce, or compete, at
+  rates drawn from a Poisson distribution -- producing the
+  chasing spirals characteristic of cyclic-dominance ecosystems.
+</p>
+<p>
+  The three <code>*-rate-exponent</code> sliders each scale
+  their event's rate by a power of 10 -- watch how much faster
+  <em>swap</em> (movement) needs to be, relative to
+  <em>select</em> (competition), to keep the spirals stable
+  instead of collapsing to one color.
+</p>
+"""
+
 from engine.netlogo import *
 
 resize_world(-75, 75, -75, 75)

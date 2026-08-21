@@ -1,0 +1,15 @@
+[
+  { "key": "fire", "label": "Fire" },
+  { "key": "flocking", "label": "Flocking" },
+  { "key": "gas_lab", "label": "GasLab" },
+  { "key": "ants", "label": "Ants" },
+  { "key": "wolf_sheep", "label": "Wolf Sheep Predation" },
+  { "key": "virus_on_network", "label": "Virus on a Network" },
+  { "key": "life", "label": "Life" },
+  { "key": "sierpinski", "label": "Sierpinski Simple" },
+  { "key": "preferential_attachment", "label": "Preferential Attachment" },
+  { "key": "rock_paper_scissors", "label": "Rock Paper Scissors" },
+  { "key": "random_basic", "label": "Random Basic" },
+  { "key": "diffusion_on_directed_network", "label": "Diffusion on a Directed Network" },
+  { "key": "dimerizing_gas", "label": "Dimerizing Gas (2A ⇌ B)" }
+]

@@ -24,6 +24,25 @@ Deliberate deviations from the real source:
     Setup/Go button pair has no room for.
 """
 
+INFO = """
+<h2>Preferential Attachment</h2>
+<p>
+  A Python port of NetLogo's classic <em>Preferential
+  Attachment</em> model -- the first model in this app to use a
+  real histogram-mode plot pen. Starting from two connected
+  nodes, each tick adds one new node, linked to a random END of
+  a random EXISTING link -- so a node with more connections is
+  proportionally more likely to gain new ones ("rich get
+  richer"), the mechanism behind real-world "scale-free"
+  networks like the web or social graphs.
+</p>
+<p>
+  Watch the <em>Degree Distribution</em> histogram develop a
+  long tail: most nodes stay small, but a few "hubs" accumulate
+  a disproportionate share of the connections.
+</p>
+"""
+
 from engine.netlogo import *
 
 resize_world(-45, 45, -45, 45)

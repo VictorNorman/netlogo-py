@@ -19,6 +19,24 @@ Deliberate deviations from the real source:
     next round of growth will branch from).
 """
 
+INFO = """
+<h2>Sierpinski Simple</h2>
+<p>
+  A Python port of NetLogo's classic <em>Sierpinski Simple</em>
+  model -- the first model in this app to use a pen. One turtle
+  starts with its pen down; each tick, every living turtle
+  hatches three children (one per leg of a Y shape), each
+  moving forward and leaving a trail, then the parent dies. The
+  legs get half as long each generation, tracing out Sierpinski's
+  self-similar tree.
+</p>
+<p>
+  Click <em>go</em> repeatedly (or hold it) to grow the tree one
+  generation at a time -- watch <em>Num Turtles</em> triple
+  (3, 9, 27, ...) each tick as the fractal branches.
+</p>
+"""
+
 from engine.netlogo import *
 
 resize_world(-17, 17, -17, 17)

@@ -32,6 +32,25 @@ Deliberate deviations from the real source:
     draw/don't-draw mode switch.
 """
 
+INFO = """
+<h2>Life</h2>
+<p>
+  A Python port of NetLogo's classic <em>Life</em> (Conway's Game
+  of Life) model -- the first model in this app that responds to
+  the mouse. Each patch is alive or dead; every tick, a cell is
+  born if it has exactly 3 living neighbors, survives if it has
+  2 or 3, and dies otherwise.
+</p>
+<p>
+  Click and drag on the grid (with or without <em>go</em>
+  running) to draw or erase cells by hand -- whether the drag
+  draws or erases is decided by whatever the first cell you
+  touch already was, so dragging across a mix of live and dead
+  cells stays consistent for the whole gesture, matching the
+  real model's own draw-cells behavior.
+</p>
+"""
+
 from engine.netlogo import *
 
 resize_world(-50, 50, -50, 50)

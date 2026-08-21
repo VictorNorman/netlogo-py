@@ -60,6 +60,44 @@ SI constants. Box dimensions (box_size) are a legitimate, dimensionless
 "%" of the world's half-width.
 """
 
+INFO = """
+<h2>Dimerizing Gas (2A &#8652; B)</h2>
+<p>
+  An original model for this app (not a NetLogo Sample Models port)
+  -- the same hard-sphere box-of-particles physics as
+  <em>GasLab</em>, plus a reversible reaction: two A particles
+  (light blue) that collide may fuse into one B particle (red,
+  drawn larger -- it has twice the mass), and a B particle that
+  hits anything -- another particle or a wall -- may fall back
+  apart into two A's. <code>dimerization-chance</code> and
+  <code>dissociation-chance</code> control how likely each event
+  is, per collision.
+</p>
+<p>
+  This is a classic demonstration of <strong>dynamic
+  equilibrium</strong>: even though individual molecules keep
+  reacting in both directions constantly, the population counts
+  (see the <em>Populations</em> plot) settle into a stable
+  balance where the forward and reverse reaction rates match.
+  <code>A + 2&times;B</code> (the total A-equivalent mass) never
+  changes -- only how it's distributed between the two species
+  does. If the reaction is behaving like real mass-action
+  chemistry, <code>B / A&sup2;</code> (the <em>Kc</em> monitor)
+  should hold roughly steady once equilibrium is reached, however
+  you got there -- try starting from all-A (<code>initial-B =
+  0</code>) versus starting with some B already present.
+</p>
+<p>
+  The <em>Speed Distribution</em> histogram (the first plot in
+  this app to share its canvas with a second plot_widget) shows
+  each species' molecular speeds converging toward a Maxwell-
+  Boltzmann-shaped spread, exactly like GasLab's -- <code>
+  temperature</code> sets the initial speeds (equal average
+  kinetic energy per particle for both species) and also scales
+  how energetic a freshly-dissociated pair of A's comes apart.
+</p>
+"""
+
 from engine.netlogo import *
 
 resize_world(-40, 40, -40, 40)

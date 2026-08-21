@@ -11,6 +11,23 @@ list for `for`, .where() as an equality-only shorthand, slider() binding a
 real number rather than a wrapper object).
 """
 
+INFO = """
+<h2>Fire</h2>
+<p>
+  Trees (green) are scattered across the world at the given density.
+  The left edge is set alight; a burning patch turns black and sprouts
+  a "fires" turtle (bright red). Each tick, every fire ignites its
+  green neighbor patches, then becomes an "embers" turtle, which
+  gradually darkens over several ticks before finally dying out. The
+  model stops once no fires or embers remain.
+</p>
+<p>
+  This models the idea of a percolation threshold: below a critical
+  density the fire tends to die out quickly, while above it the fire
+  tends to spread across the whole forest.
+</p>
+"""
+
 from engine.netlogo import *
 
 # The view: real Fire.nlogox is minPxcor="-125" maxPxcor="125" (same for y)

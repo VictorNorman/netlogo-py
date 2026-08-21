@@ -18,6 +18,27 @@ Deliberate deviations from the real source:
     plot), a value-add rather than a real-source deviation.
 """
 
+INFO = """
+<h2>Virus on a Network</h2>
+<p>
+  A Python port of NetLogo's classic <em>Virus on a Network</em>
+  model -- the first model in this app to use links. Nodes
+  (turtles) are susceptible (blue), infected (red), or resistant
+  (gray), connected by a randomly-built, spatially-clustered
+  network. Each tick, infected nodes may spread the virus to
+  their uninfected neighbors along a link, then periodically
+  check whether they recover (possibly gaining resistance) or
+  stay infected.
+</p>
+<p>
+  The network's layout is computed once during setup (a simple
+  force-directed <code>layout_spring</code>, added to
+  engine/netlogo.py for this port) -- turtles never move again
+  once <code>go</code> starts, so what you're watching is purely
+  color/link changes as the epidemic spreads across a fixed graph.
+</p>
+"""
+
 from engine.netlogo import *
 
 resize_world(-20, 20, -20, 20)

@@ -47,9 +47,12 @@ Switching the engine dropdown swaps the transport; the rendering code (`drawPatc
 ```
 engine/netlogo.py     the runtime: primitives, world state, widget system, auto_state()
 models/*.py           twelve ported models + one original (Dimerizing Gas)
+models/registry.json  which models are active, their key/label, and dropdown order
 server/main.py        FastAPI app: model registry + HTTP API + static file serving
 static/               zero-build frontend: index.html, app.js, style.css, pyodide-worker.js
 ```
+
+Adding a model doesn't require touching `server/main.py` at all: drop the new `models/<key>.py` (with a module-level `INFO = """<h2>...</h2>..."""` HTML blurb next to its docstring, same as every other model) and add one `{"key": "<key>", "label": "..."}` to `models/registry.json`. Everything else in its registry entry — world size/wrapping, every slider/switch/chooser/monitor/plot, which source file the Code tab shows — is read straight off the module itself.
 
 ### `engine/netlogo.py` — the runtime
 
@@ -106,10 +109,10 @@ All endpoints are relative to the running server (default `http://localhost:8765
 | Method & path | Body | Returns |
 |---|---|---|
 | `GET /` | — | the frontend (`static/index.html`) |
-| `GET /api/models` | — | the full model registry: for every model, its label, render mode, and every slider/switch/chooser/monitor/plot spec (see below) |
+| `GET /api/models` | — | the full model registry: for every model, its label and every slider/switch/chooser/monitor/plot spec (see below) |
 | `POST /api/select-model` | `{"model": "wolf_sheep"}` | state after switching to that model and calling `setup()` |
-| `POST /api/select-engine` | `{"engine": "vectorized"}` | state after switching engines (`"vectorized"` \| `"wasm"` — `wasm` is client-only, see below) |
-| `GET /api/model-source?model=ants&engine=vectorized` | — | `{"source": "<the model's .py file as text>"}` — powers the Code tab and the WASM engine's bootstrap |
+| `POST /api/select-engine` | `{"engine": "server-side"}` | state after switching engines (`"server-side"` \| `"wasm"` — `wasm` is client-only, see below) |
+| `GET /api/model-source?model=ants&engine=server-side` | — | `{"source": "<the model's .py file as text>"}` — powers the Code tab and the WASM engine's bootstrap |
 | `GET /api/state` | — | the current state, without advancing |
 | `POST /api/setup` | `{"<slider_name>": <value>, ...}` | applies each given value via `setattr`, calls `setup()`, returns state |
 | `POST /api/step` | — | calls `go()` once, returns state |
@@ -122,12 +125,11 @@ All endpoints are relative to the running server (default `http://localhost:8765
 {
   "key": "wolf_sheep",
   "label": "Wolf Sheep Predation",
-  "render": "patches_and_turtles",       // documentation only — the frontend infers this from which keys state() actually returns
   "sliders":  [{"name": "...", "label": "...", "default": 0, "min": 0, "max": 0, "step": 0, "units": "..."}],
   "switches": [{"name": "...", "label": "...", "default": true}],
   "choosers": [{"name": "...", "label": "...", "options": ["..."], "default": "..."}],
   "monitors": [{"key": "...", "label": "..."}],
-  "plot": {"title": "...", "x_label": "...", "y_label": "...", "pens": [{"name": "...", "color": "#..."}]} ,  // or null
+  "plots": [{"title": "...", "x_label": "...", "y_label": "...", "pens": [{"name": "...", "color": "#...", "mode": "line"}]}],  // usually one, can be more (see Dimerizing Gas)
   "info": "<h2>...</h2>..."               // HTML description, shown in the Info tab
 }
 ```

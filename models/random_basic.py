@@ -34,6 +34,25 @@ Deliberate deviations from the real source:
     other models already document.
 """
 
+INFO = """
+<h2>Random Basic</h2>
+<p>
+  A Python port of NetLogo's classic <em>Random Basic</em>
+  (ProbLab) model -- the first model in this app to use turtle
+  labels. Each tick, a black "messenger" turtle picks a random
+  number, its label, and walks to the matching column of a
+  histogram, dropping a "frame" there -- building up the
+  distribution of a random variable one draw at a time.
+</p>
+<p>
+  The <em>red-green</em> slider splits the columns into two
+  groups, colored as the histogram fills in (when
+  <em>colors?</em> is on) -- watch <em>%-red</em> converge
+  toward whatever share of the sample space falls left of that
+  split.
+</p>
+"""
+
 from engine.netlogo import *
 
 resize_world(-50, 50, -30, 30)

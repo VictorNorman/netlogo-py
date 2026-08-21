@@ -28,7 +28,7 @@ const codeEditor = document.getElementById("code-editor");
 const WASM_CLASS_NAMES = {
   fire: null,
   flocking: null,
-  gaslab: null,
+  gas_lab: null,
   ants: null,
   wolf_sheep: null,
   virus_on_network: null,
@@ -54,7 +54,7 @@ const WASM_CLASS_NAMES = {
 let goRunning = false;
 let goTimeoutId = null;
 let specsByKey = {};
-let currentEngine = "vectorized";
+let currentEngine = "server-side";
 let plotStates = []; // one {spec, canvas, ctx, legendEl} per plot_widget() the active model declared
 let lastState = null; // most recent drawState() input, so mouse handlers can invert worldToCanvas()
 
@@ -876,10 +876,10 @@ function updateEngineUi() {
 
 async function loadCodeTab() {
   const modelKey = modelSelect.value;
-  // The WASM engine always runs the vectorized source (it's the one
-  // that's plain NumPy, ideal for Pyodide) regardless of which server
-  // engine was last selected.
-  const engineParam = currentEngine === "wasm" ? "vectorized" : currentEngine;
+  // The WASM engine always runs the same source as the server-side
+  // engine (there's only ever the one model file) regardless of which
+  // server engine was last selected.
+  const engineParam = currentEngine === "wasm" ? "server-side" : currentEngine;
   const response = await fetch(`/api/model-source?model=${modelKey}&engine=${engineParam}`, { cache: "no-store" });
   const data = await response.json();
   if (currentEngine === "wasm") {

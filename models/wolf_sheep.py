@@ -12,6 +12,29 @@ Deliberate deviations from the real source:
     distinction in this app.
 """
 
+INFO = """
+<h2>Wolf Sheep Predation</h2>
+<p>
+  A Python port of NetLogo's classic <em>Wolf Sheep Predation</em>
+  model. Sheep (tan) and wolves (dark) wander randomly; a wolf
+  that shares a patch with a sheep eats it, and both species
+  reproduce at a random rate each tick. Switch <code>model-version</code>
+  to <code>sheep-wolves-grass</code> to also model grass (green,
+  eaten by sheep and regrowing over time) -- without it, sheep
+  never need to eat, which produces interesting but ultimately
+  unstable population swings; with it, the system is a much
+  closer (and generally stable) match to the classic
+  Lotka-Volterra predator-prey oscillation.
+</p>
+<p>
+  The <em>populations</em> plot below is this app's first: each
+  tick, the model calls <code>plot("sheep", ...)</code> /
+  <code>plot("wolves", ...)</code> / <code>plot("grass / 4", ...)</code>
+  (engine/netlogo.py's `plot()`) to append a point per pen,
+  exactly mirroring the real model's own three plot pens.
+</p>
+"""
+
 from engine.netlogo import *
 
 resize_world(-25, 25, -25, 25)

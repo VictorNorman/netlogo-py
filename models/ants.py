@@ -14,6 +14,26 @@ Deliberate deviations from the real source:
     deviation.
 """
 
+INFO = """
+<h2>Ants</h2>
+<p>
+  A Python port of NetLogo's classic <em>Ants</em> model. Ants
+  (white) wander randomly from the nest (violet) until they find
+  food (cyan/sky/blue, one shade per pile); carrying food home,
+  they lay a chemical trail (green) other ants can follow, and
+  home in on the nest using a fixed nest-scent gradient. Ants
+  currently carrying food are drawn red.
+</p>
+<p>
+  Unlike Fire (which only ever conditionally recolors patches),
+  every tick here runs <code>diffuse</code> unconditionally over
+  every patch to spread the chemical trail -- an O(patches) cost
+  that has nothing to do with how many ants exist or where they
+  are, the other classic expensive NetLogo patch workload
+  alongside Flocking/GasLab's O(N&sup2;) turtle-turtle cost.
+</p>
+"""
+
 from engine.netlogo import *
 
 resize_world(-35, 35, -35, 35)

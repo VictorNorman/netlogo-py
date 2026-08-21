@@ -23,7 +23,27 @@ Deliberate deviations from the real source:
     monitor) alongside the real percent-fast/medium/slow and average
     speed/energy monitors -- kept because "KE stays exactly constant while
     speeds spread out" is this app's pedagogical hook for the model (see
-    the info text in server/main.py).
+    INFO below).
+"""
+
+INFO = """
+<h2>GasLab</h2>
+<p>
+  A Python port of NetLogo's classic <em>GasLab: Gas in a Box</em>
+  model: particles bounce elastically off the walls of a closed
+  box (yellow) and off each other, conserving total kinetic
+  energy exactly. Particles are colored by speed: blue (slow),
+  green (medium), red (fast).
+</p>
+<p>
+  Like Flocking, collision detection is an O(N&sup2;) turtle-turtle
+  comparison every tick -- one of the most commonly cited "NetLogo
+  is slow" examples, since GasLab pairs that cost with actual
+  physics (not just a heading nudge). Watch <em>average speed</em>
+  drift away from the initial uniform speed while <em>total KE</em>
+  stays exactly constant: collisions redistribute energy into a
+  spread of speeds even though the total is conserved.
+</p>
 """
 
 from engine.netlogo import *

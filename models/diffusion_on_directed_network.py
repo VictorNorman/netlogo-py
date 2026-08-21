@@ -31,6 +31,26 @@ Deliberate deviations from the real source:
     models/preferential_attachment.py.
 """
 
+INFO = """
+<h2>Diffusion on a Directed Network</h2>
+<p>
+  A Python port of NetLogo's classic <em>Diffusion on a
+  Directed Network</em> model -- the first model in this app
+  to use directed links and more than one link breed. Each
+  tick, every node keeps a share of its own "value" and
+  divides the rest evenly among its outgoing links -- since
+  links are directed, node B can give value to node A without
+  A giving anything back.
+</p>
+<p>
+  A node's size shows how much value it holds; a link's
+  brightness shows how much value just flowed through it.
+  Watch the network settle toward an equilibrium -- sometimes
+  one node ends up with nearly everything, sometimes value
+  stays spread across many.
+</p>
+"""
+
 import math
 
 from engine.netlogo import *

@@ -17,6 +17,29 @@ suggesting a single `fd 1` as the equivalent simplification, which is
 what this uses.
 """
 
+INFO = """
+<h2>Flocking</h2>
+<p>
+  A Python port of NetLogo's classic <em>Flocking</em> (boids) model.
+  Each tick, every turtle applies three rules based on nearby
+  flockmates (other turtles within <code>vision</code>):
+</p>
+<ul>
+  <li><strong>separate</strong> — if the nearest flockmate is closer
+    than <code>minimum-separation</code>, turn away from it and do
+    nothing else;</li>
+  <li><strong>align</strong> — otherwise, turn toward the average
+    heading of all flockmates;</li>
+  <li><strong>cohere</strong> — then turn toward the average
+    direction to those same flockmates.</li>
+</ul>
+<p>
+  The order parameter monitor is the mean resultant length of all
+  headings: near 0 means headings are scattered/random, near 1 means
+  the flock has aligned into unified movement.
+</p>
+"""
+
 from engine.netlogo import *
 
 resize_world(-35, 35, -35, 35)

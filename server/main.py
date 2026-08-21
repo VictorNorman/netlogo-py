@@ -13,21 +13,27 @@ endpoints below can stay model-agnostic:
   - state() -> JSON-serializable dict -- optional. The frontend
     (static/app.js) renders whatever shape it finds: a "colors" key draws
     patches, a "turtles" key draws turtles, and a model (GasLab, Ants) can
-    return both at once. The "render" field below is documentation only,
-    not consumed by the frontend. Most models don't define state() at
-    all -- see _state() below and engine/netlogo.py's auto_state(), which
-    builds it automatically from a model's already-declared widgets.
+    return both at once. Most models don't define state() at all -- see
+    _state() below and engine/netlogo.py's auto_state(), which builds it
+    automatically from a model's already-declared widgets.
 Slider "name"s below are exactly the model's attribute names, so the setup
 and command endpoints can apply them with plain setattr()/hasattr() and
 never need to know which model is active.
 
-Each model is available on one server-side engine, "vectorized" -- despite
-the name, no model actually uses NumPy anymore (see engine/netlogo.py's
-module docstring: every model is now a class-less module of free functions
-operating on plain per-agent Python objects, closer to real NetLogo than
-an array-vectorized implementation could read). The name has stuck around
-as the engine key/label since renaming it is cosmetic, not worth touching
-for its own sake.
+MODEL_REGISTRY itself is built from models/registry.json plus each
+model's own module -- see the loop right after _plots_from_module() below.
+registry.json is the only thing that needs editing to add a new model
+beyond writing models/<key>.py itself: it just lists each model's key and
+display label, in dropdown order. Everything else -- world size/wrapping,
+every slider/switch/chooser/monitor/plot, and the info-tab HTML (a plain
+INFO = "..." string at the top of the model's own file, easier to write
+than escaped HTML embedded in a JSON string) -- comes from the module
+that key names.
+
+Each model is available on one server-side engine, "server-side" -- every
+model is a class-less module of free functions operating on plain
+per-agent Python objects (see engine/netlogo.py's module docstring),
+computed in this Python process and polled by the frontend over HTTP.
 
 A second engine, "wasm", runs entirely in the browser (Pyodide: CPython
 compiled to WebAssembly) and never hits this server for computation -- see
@@ -51,6 +57,8 @@ hasattr/model.go() etc.) works unchanged, because Python modules support
 attribute access exactly like objects do.
 """
 
+import importlib
+import json
 import pathlib
 from typing import Any, Dict, Optional
 
@@ -60,6 +68,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import engine.netlogo as netlogo
+
+BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
+STATIC_DIR = BASE_DIR / "static"
 
 
 def _world_snapshot():
@@ -77,48 +88,23 @@ def _world_snapshot():
     return (netlogo.min_pxcor(), netlogo.max_pxcor(), netlogo.min_pycor(), netlogo.max_pycor(), netlogo.get_wrap())
 
 
-import models.fire as fire_module
+# models/registry.json lists every model's key (== its models/<key>.py
+# filename, minus the extension) and display label, in dropdown order --
+# see MODEL_REGISTRY below for where the rest of each entry comes from.
+# Imported one at a time, in file order, so _world_snapshot() right after
+# each import still captures that model's own world config correctly
+# (see its docstring -- correctness doesn't actually depend on this order,
+# but a stray typo'd key fails loudly here at startup instead of silently
+# later).
+with open(BASE_DIR / "models" / "registry.json") as _f:
+    _REGISTRY_SPEC = json.load(_f)
 
-FIRE_WORLD = _world_snapshot()
-import models.flocking as flocking_module
-
-FLOCKING_WORLD = _world_snapshot()
-import models.gas_lab as gas_lab_module
-
-GAS_LAB_WORLD = _world_snapshot()
-import models.ants as ants_module
-
-ANTS_WORLD = _world_snapshot()
-import models.wolf_sheep as wolf_sheep_module
-
-WOLF_SHEEP_WORLD = _world_snapshot()
-import models.virus_on_network as virus_module
-
-VIRUS_WORLD = _world_snapshot()
-import models.life as life_module
-
-LIFE_WORLD = _world_snapshot()
-import models.sierpinski as sierpinski_module
-
-SIERPINSKI_WORLD = _world_snapshot()
-import models.preferential_attachment as preferential_attachment_module
-
-PREFERENTIAL_ATTACHMENT_WORLD = _world_snapshot()
-import models.rock_paper_scissors as rock_paper_scissors_module
-
-ROCK_PAPER_SCISSORS_WORLD = _world_snapshot()
-import models.random_basic as random_basic_module
-
-RANDOM_BASIC_WORLD = _world_snapshot()
-import models.diffusion_on_directed_network as diffusion_module
-
-DIFFUSION_WORLD = _world_snapshot()
-import models.dimerizing_gas as dimerizing_gas_module
-
-DIMERIZING_GAS_WORLD = _world_snapshot()
-
-BASE_DIR = pathlib.Path(__file__).resolve().parent.parent
-STATIC_DIR = BASE_DIR / "static"
+_MODULES = {}
+_WORLDS = {}
+for _entry in _REGISTRY_SPEC:
+    _key = _entry["key"]
+    _MODULES[_key] = importlib.import_module(f"models.{_key}")
+    _WORLDS[_key] = _world_snapshot()
 
 app = FastAPI(title="NetLogo.py")
 
@@ -138,7 +124,7 @@ async def no_store(request, call_next):
     return response
 
 ENGINES = {
-    "vectorized": {"label": "Vectorized (NumPy)"},
+    "server-side": {"label": "Server-side"},
 }
 
 
@@ -199,485 +185,36 @@ def _plots_from_module(module):
 
 
 MODEL_REGISTRY = {
-    "fire": {
-        "label": "Fire",
-        "world": FIRE_WORLD,
-        "render": "patches",
-        # Sliders/monitors come from the module itself (models/fire.py's
-        # `density = slider("density", ...)` / `monitor("percent_burned",
-        # ...)`), not hand-copied here -- see engine/netlogo.py's slider()/
-        # monitor() and _sliders_from_module()/_monitors_from_module() above.
-        "sliders": _sliders_from_module(fire_module),
-        "switches": _switches_from_module(fire_module),
-        "choosers": _choosers_from_module(fire_module),
-        "monitors": _monitors_from_module(fire_module),
-        "plots": _plots_from_module(fire_module),
-        "info": """
-            <h2>Fire</h2>
-            <p>
-              Trees (green) are scattered across the world at the given density.
-              The left edge is set alight; a burning patch turns black and sprouts
-              a "fires" turtle (bright red). Each tick, every fire ignites its
-              green neighbor patches, then becomes an "embers" turtle, which
-              gradually darkens over several ticks before finally dying out. The
-              model stops once no fires or embers remain.
-            </p>
-            <p>
-              This models the idea of a percolation threshold: below a critical
-              density the fire tends to die out quickly, while above it the fire
-              tends to spread across the whole forest.
-            </p>
-        """,
+    entry["key"]: {
+        "label": entry["label"],
+        "world": _WORLDS[entry["key"]],
+        # Sliders/switches/choosers/monitors/plots all come straight from
+        # the module itself (e.g. models/fire.py's
+        # `density = slider("density", ...)`), not hand-copied here -- see
+        # engine/netlogo.py's slider()/monitor()/etc. and
+        # _sliders_from_module()/_monitors_from_module()/etc. above.
+        "sliders": _sliders_from_module(_MODULES[entry["key"]]),
+        "switches": _switches_from_module(_MODULES[entry["key"]]),
+        "choosers": _choosers_from_module(_MODULES[entry["key"]]),
+        "monitors": _monitors_from_module(_MODULES[entry["key"]]),
+        "plots": _plots_from_module(_MODULES[entry["key"]]),
+        # Each model's own module-level INFO string (see e.g. the top of
+        # models/fire.py) -- a plain Python string is much more pleasant to
+        # hand-write multi-paragraph HTML in than an escaped JSON string
+        # would be, so registry.json only carries the key/label, not this.
+        "info": getattr(_MODULES[entry["key"]], "INFO", f"<h2>{entry['label']}</h2>"),
         "engines": {
-            "vectorized": {
-                "module": fire_module,
-                "source_file": "models/fire.py",
+            "server-side": {
+                "module": _MODULES[entry["key"]],
+                "source_file": f"models/{entry['key']}.py",
             },
         },
-    },
-    "flocking": {
-        "label": "Flocking",
-        "world": FLOCKING_WORLD,
-        "render": "turtles",
-        "sliders": _sliders_from_module(flocking_module),
-        "switches": _switches_from_module(flocking_module),
-        "choosers": _choosers_from_module(flocking_module),
-        "monitors": _monitors_from_module(flocking_module),
-        "plots": _plots_from_module(flocking_module),
-        "info": """
-            <h2>Flocking</h2>
-            <p>
-              A Python port of NetLogo's classic <em>Flocking</em> (boids) model.
-              Each tick, every turtle applies three rules based on nearby
-              flockmates (other turtles within <code>vision</code>):
-            </p>
-            <ul>
-              <li><strong>separate</strong> — if the nearest flockmate is closer
-                than <code>minimum-separation</code>, turn away from it and do
-                nothing else;</li>
-              <li><strong>align</strong> — otherwise, turn toward the average
-                heading of all flockmates;</li>
-              <li><strong>cohere</strong> — then turn toward the average
-                direction to those same flockmates.</li>
-            </ul>
-            <p>
-              The order parameter monitor is the mean resultant length of all
-              headings: near 0 means headings are scattered/random, near 1 means
-              the flock has aligned into unified movement.
-            </p>
-        """,
-        "engines": {
-            "vectorized": {
-                "module": flocking_module,
-                "source_file": "models/flocking.py",
-            },
-        },
-    },
-    "gaslab": {
-        "label": "GasLab",
-        "world": GAS_LAB_WORLD,
-        "render": "patches_and_turtles",
-        "sliders": _sliders_from_module(gas_lab_module),
-        "switches": _switches_from_module(gas_lab_module),
-        "choosers": _choosers_from_module(gas_lab_module),
-        "monitors": _monitors_from_module(gas_lab_module),
-        "plots": _plots_from_module(gas_lab_module),
-        "info": """
-            <h2>GasLab</h2>
-            <p>
-              A Python port of NetLogo's classic <em>GasLab: Gas in a Box</em>
-              model: particles bounce elastically off the walls of a closed
-              box (yellow) and off each other, conserving total kinetic
-              energy exactly. Particles are colored by speed: blue (slow),
-              green (medium), red (fast).
-            </p>
-            <p>
-              Like Flocking, collision detection is an O(N&sup2;) turtle-turtle
-              comparison every tick -- one of the most commonly cited "NetLogo
-              is slow" examples, since GasLab pairs that cost with actual
-              physics (not just a heading nudge). Watch <em>average speed</em>
-              drift away from the initial uniform speed while <em>total KE</em>
-              stays exactly constant: collisions redistribute energy into a
-              spread of speeds even though the total is conserved.
-            </p>
-        """,
-        "engines": {
-            "vectorized": {
-                "module": gas_lab_module,
-                "source_file": "models/gas_lab.py",
-            },
-        },
-    },
-    "ants": {
-        "label": "Ants",
-        "world": ANTS_WORLD,
-        "render": "patches_and_turtles",
-        "sliders": _sliders_from_module(ants_module),
-        "switches": _switches_from_module(ants_module),
-        "choosers": _choosers_from_module(ants_module),
-        "monitors": _monitors_from_module(ants_module),
-        "plots": _plots_from_module(ants_module),
-        "info": """
-            <h2>Ants</h2>
-            <p>
-              A Python port of NetLogo's classic <em>Ants</em> model. Ants
-              (white) wander randomly from the nest (violet) until they find
-              food (cyan/sky/blue, one shade per pile); carrying food home,
-              they lay a chemical trail (green) other ants can follow, and
-              home in on the nest using a fixed nest-scent gradient. Ants
-              currently carrying food are drawn red.
-            </p>
-            <p>
-              Unlike Fire (which only ever conditionally recolors patches),
-              every tick here runs <code>diffuse</code> unconditionally over
-              every patch to spread the chemical trail -- an O(patches) cost
-              that has nothing to do with how many ants exist or where they
-              are, the other classic expensive NetLogo patch workload
-              alongside Flocking/GasLab's O(N&sup2;) turtle-turtle cost.
-            </p>
-        """,
-        "engines": {
-            "vectorized": {
-                "module": ants_module,
-                "source_file": "models/ants.py",
-            },
-        },
-    },
-    "wolf_sheep": {
-        "label": "Wolf Sheep Predation",
-        "world": WOLF_SHEEP_WORLD,
-        "render": "patches_and_turtles",
-        "sliders": _sliders_from_module(wolf_sheep_module),
-        "switches": _switches_from_module(wolf_sheep_module),
-        "choosers": _choosers_from_module(wolf_sheep_module),
-        "monitors": _monitors_from_module(wolf_sheep_module),
-        "plots": _plots_from_module(wolf_sheep_module),
-        "info": """
-            <h2>Wolf Sheep Predation</h2>
-            <p>
-              A Python port of NetLogo's classic <em>Wolf Sheep Predation</em>
-              model. Sheep (tan) and wolves (dark) wander randomly; a wolf
-              that shares a patch with a sheep eats it, and both species
-              reproduce at a random rate each tick. Switch <code>model-version</code>
-              to <code>sheep-wolves-grass</code> to also model grass (green,
-              eaten by sheep and regrowing over time) -- without it, sheep
-              never need to eat, which produces interesting but ultimately
-              unstable population swings; with it, the system is a much
-              closer (and generally stable) match to the classic
-              Lotka-Volterra predator-prey oscillation.
-            </p>
-            <p>
-              The <em>populations</em> plot below is this app's first: each
-              tick, the model calls <code>plot("sheep", ...)</code> /
-              <code>plot("wolves", ...)</code> / <code>plot("grass / 4", ...)</code>
-              (engine/netlogo.py's `plot()`) to append a point per pen,
-              exactly mirroring the real model's own three plot pens.
-            </p>
-        """,
-        "engines": {
-            "vectorized": {
-                "module": wolf_sheep_module,
-                "source_file": "models/wolf_sheep.py",
-            },
-        },
-    },
-    "virus_on_network": {
-        "label": "Virus on a Network",
-        "world": VIRUS_WORLD,
-        "render": "turtles_and_links",
-        "sliders": _sliders_from_module(virus_module),
-        "switches": _switches_from_module(virus_module),
-        "choosers": _choosers_from_module(virus_module),
-        "monitors": _monitors_from_module(virus_module),
-        "plots": _plots_from_module(virus_module),
-        "info": """
-            <h2>Virus on a Network</h2>
-            <p>
-              A Python port of NetLogo's classic <em>Virus on a Network</em>
-              model -- the first model in this app to use links. Nodes
-              (turtles) are susceptible (blue), infected (red), or resistant
-              (gray), connected by a randomly-built, spatially-clustered
-              network. Each tick, infected nodes may spread the virus to
-              their uninfected neighbors along a link, then periodically
-              check whether they recover (possibly gaining resistance) or
-              stay infected.
-            </p>
-            <p>
-              The network's layout is computed once during setup (a simple
-              force-directed <code>layout_spring</code>, added to
-              engine/netlogo.py for this port) -- turtles never move again
-              once <code>go</code> starts, so what you're watching is purely
-              color/link changes as the epidemic spreads across a fixed graph.
-            </p>
-        """,
-        "engines": {
-            "vectorized": {
-                "module": virus_module,
-                "source_file": "models/virus_on_network.py",
-            },
-        },
-    },
-    "life": {
-        "label": "Life",
-        "world": LIFE_WORLD,
-        "render": "patches",
-        "sliders": _sliders_from_module(life_module),
-        "switches": _switches_from_module(life_module),
-        "choosers": _choosers_from_module(life_module),
-        "monitors": _monitors_from_module(life_module),
-        "plots": _plots_from_module(life_module),
-        "info": """
-            <h2>Life</h2>
-            <p>
-              A Python port of NetLogo's classic <em>Life</em> (Conway's Game
-              of Life) model -- the first model in this app that responds to
-              the mouse. Each patch is alive or dead; every tick, a cell is
-              born if it has exactly 3 living neighbors, survives if it has
-              2 or 3, and dies otherwise.
-            </p>
-            <p>
-              Click and drag on the grid (with or without <em>go</em>
-              running) to draw or erase cells by hand -- whether the drag
-              draws or erases is decided by whatever the first cell you
-              touch already was, so dragging across a mix of live and dead
-              cells stays consistent for the whole gesture, matching the
-              real model's own draw-cells behavior.
-            </p>
-        """,
-        "engines": {
-            "vectorized": {
-                "module": life_module,
-                "source_file": "models/life.py",
-            },
-        },
-    },
-    "sierpinski": {
-        "label": "Sierpinski Simple",
-        "world": SIERPINSKI_WORLD,
-        "render": "turtles",
-        "sliders": _sliders_from_module(sierpinski_module),
-        "switches": _switches_from_module(sierpinski_module),
-        "choosers": _choosers_from_module(sierpinski_module),
-        "monitors": _monitors_from_module(sierpinski_module),
-        "plots": _plots_from_module(sierpinski_module),
-        "info": """
-            <h2>Sierpinski Simple</h2>
-            <p>
-              A Python port of NetLogo's classic <em>Sierpinski Simple</em>
-              model -- the first model in this app to use a pen. One turtle
-              starts with its pen down; each tick, every living turtle
-              hatches three children (one per leg of a Y shape), each
-              moving forward and leaving a trail, then the parent dies. The
-              legs get half as long each generation, tracing out Sierpinski's
-              self-similar tree.
-            </p>
-            <p>
-              Click <em>go</em> repeatedly (or hold it) to grow the tree one
-              generation at a time -- watch <em>Num Turtles</em> triple
-              (3, 9, 27, ...) each tick as the fractal branches.
-            </p>
-        """,
-        "engines": {
-            "vectorized": {
-                "module": sierpinski_module,
-                "source_file": "models/sierpinski.py",
-            },
-        },
-    },
-    "preferential_attachment": {
-        "label": "Preferential Attachment",
-        "world": PREFERENTIAL_ATTACHMENT_WORLD,
-        "render": "turtles",
-        "sliders": _sliders_from_module(preferential_attachment_module),
-        "switches": _switches_from_module(preferential_attachment_module),
-        "choosers": _choosers_from_module(preferential_attachment_module),
-        "monitors": _monitors_from_module(preferential_attachment_module),
-        "plots": _plots_from_module(preferential_attachment_module),
-        "info": """
-            <h2>Preferential Attachment</h2>
-            <p>
-              A Python port of NetLogo's classic <em>Preferential
-              Attachment</em> model -- the first model in this app to use a
-              real histogram-mode plot pen. Starting from two connected
-              nodes, each tick adds one new node, linked to a random END of
-              a random EXISTING link -- so a node with more connections is
-              proportionally more likely to gain new ones ("rich get
-              richer"), the mechanism behind real-world "scale-free"
-              networks like the web or social graphs.
-            </p>
-            <p>
-              Watch the <em>Degree Distribution</em> histogram develop a
-              long tail: most nodes stay small, but a few "hubs" accumulate
-              a disproportionate share of the connections.
-            </p>
-        """,
-        "engines": {
-            "vectorized": {
-                "module": preferential_attachment_module,
-                "source_file": "models/preferential_attachment.py",
-            },
-        },
-    },
-    "rock_paper_scissors": {
-        "label": "Rock Paper Scissors",
-        "world": ROCK_PAPER_SCISSORS_WORLD,
-        "render": "patches",
-        "sliders": _sliders_from_module(rock_paper_scissors_module),
-        "switches": _switches_from_module(rock_paper_scissors_module),
-        "choosers": _choosers_from_module(rock_paper_scissors_module),
-        "monitors": _monitors_from_module(rock_paper_scissors_module),
-        "plots": _plots_from_module(rock_paper_scissors_module),
-        "info": """
-            <h2>Rock Paper Scissors</h2>
-            <p>
-              A Python port of NetLogo's classic <em>Rock Paper Scissors</em>
-              model. Every patch is red, green, blue, or blank; red beats
-              green, green beats blue, blue beats red. Each tick, random
-              pairs of neighboring patches swap, reproduce, or compete, at
-              rates drawn from a Poisson distribution -- producing the
-              chasing spirals characteristic of cyclic-dominance ecosystems.
-            </p>
-            <p>
-              The three <code>*-rate-exponent</code> sliders each scale
-              their event's rate by a power of 10 -- watch how much faster
-              <em>swap</em> (movement) needs to be, relative to
-              <em>select</em> (competition), to keep the spirals stable
-              instead of collapsing to one color.
-            </p>
-        """,
-        "engines": {
-            "vectorized": {
-                "module": rock_paper_scissors_module,
-                "source_file": "models/rock_paper_scissors.py",
-            },
-        },
-    },
-    "random_basic": {
-        "label": "Random Basic",
-        "world": RANDOM_BASIC_WORLD,
-        "render": "patches_and_turtles",
-        "sliders": _sliders_from_module(random_basic_module),
-        "switches": _switches_from_module(random_basic_module),
-        "choosers": _choosers_from_module(random_basic_module),
-        "monitors": _monitors_from_module(random_basic_module),
-        "plots": _plots_from_module(random_basic_module),
-        "info": """
-            <h2>Random Basic</h2>
-            <p>
-              A Python port of NetLogo's classic <em>Random Basic</em>
-              (ProbLab) model -- the first model in this app to use turtle
-              labels. Each tick, a black "messenger" turtle picks a random
-              number, its label, and walks to the matching column of a
-              histogram, dropping a "frame" there -- building up the
-              distribution of a random variable one draw at a time.
-            </p>
-            <p>
-              The <em>red-green</em> slider splits the columns into two
-              groups, colored as the histogram fills in (when
-              <em>colors?</em> is on) -- watch <em>%-red</em> converge
-              toward whatever share of the sample space falls left of that
-              split.
-            </p>
-        """,
-        "engines": {
-            "vectorized": {
-                "module": random_basic_module,
-                "source_file": "models/random_basic.py",
-            },
-        },
-    },
-    "diffusion_on_directed_network": {
-        "label": "Diffusion on a Directed Network",
-        "world": DIFFUSION_WORLD,
-        "render": "turtles_and_links",
-        "sliders": _sliders_from_module(diffusion_module),
-        "switches": _switches_from_module(diffusion_module),
-        "choosers": _choosers_from_module(diffusion_module),
-        "monitors": _monitors_from_module(diffusion_module),
-        "plots": _plots_from_module(diffusion_module),
-        "info": """
-            <h2>Diffusion on a Directed Network</h2>
-            <p>
-              A Python port of NetLogo's classic <em>Diffusion on a
-              Directed Network</em> model -- the first model in this app
-              to use directed links and more than one link breed. Each
-              tick, every node keeps a share of its own "value" and
-              divides the rest evenly among its outgoing links -- since
-              links are directed, node B can give value to node A without
-              A giving anything back.
-            </p>
-            <p>
-              A node's size shows how much value it holds; a link's
-              brightness shows how much value just flowed through it.
-              Watch the network settle toward an equilibrium -- sometimes
-              one node ends up with nearly everything, sometimes value
-              stays spread across many.
-            </p>
-        """,
-        "engines": {
-            "vectorized": {
-                "module": diffusion_module,
-                "source_file": "models/diffusion_on_directed_network.py",
-            },
-        },
-    },
-    "dimerizing_gas": {
-        "label": "Dimerizing Gas (2A ⇌ B)",
-        "world": DIMERIZING_GAS_WORLD,
-        "render": "patches_and_turtles",
-        "sliders": _sliders_from_module(dimerizing_gas_module),
-        "switches": _switches_from_module(dimerizing_gas_module),
-        "choosers": _choosers_from_module(dimerizing_gas_module),
-        "monitors": _monitors_from_module(dimerizing_gas_module),
-        "plots": _plots_from_module(dimerizing_gas_module),
-        "info": """
-            <h2>Dimerizing Gas (2A &#8652; B)</h2>
-            <p>
-              An original model for this app (not a NetLogo Sample Models port)
-              -- the same hard-sphere box-of-particles physics as
-              <em>GasLab</em>, plus a reversible reaction: two A particles
-              (light blue) that collide may fuse into one B particle (red,
-              drawn larger -- it has twice the mass), and a B particle that
-              hits anything -- another particle or a wall -- may fall back
-              apart into two A's. <code>dimerization-chance</code> and
-              <code>dissociation-chance</code> control how likely each event
-              is, per collision.
-            </p>
-            <p>
-              This is a classic demonstration of <strong>dynamic
-              equilibrium</strong>: even though individual molecules keep
-              reacting in both directions constantly, the population counts
-              (see the <em>Populations</em> plot) settle into a stable
-              balance where the forward and reverse reaction rates match.
-              <code>A + 2&times;B</code> (the total A-equivalent mass) never
-              changes -- only how it's distributed between the two species
-              does. If the reaction is behaving like real mass-action
-              chemistry, <code>B / A&sup2;</code> (the <em>Kc</em> monitor)
-              should hold roughly steady once equilibrium is reached, however
-              you got there -- try starting from all-A (<code>initial-B =
-              0</code>) versus starting with some B already present.
-            </p>
-            <p>
-              The <em>Speed Distribution</em> histogram (the first plot in
-              this app to share its canvas with a second plot_widget) shows
-              each species' molecular speeds converging toward a Maxwell-
-              Boltzmann-shaped spread, exactly like GasLab's -- <code>
-              temperature</code> sets the initial speeds (equal average
-              kinetic energy per particle for both species) and also scales
-              how energetic a freshly-dissociated pair of A's comes apart.
-            </p>
-        """,
-        "engines": {
-            "vectorized": {
-                "module": dimerizing_gas_module,
-                "source_file": "models/dimerizing_gas.py",
-            },
-        },
-    },
+    }
+    for entry in _REGISTRY_SPEC
 }
 
 active_model_key = "flocking"
-active_engine_key = "vectorized"
+active_engine_key = "server-side"
 
 
 def _build_model():
@@ -746,7 +283,6 @@ def list_models():
             {
                 "key": key,
                 "label": entry["label"],
-                "render": entry["render"],
                 "sliders": entry["sliders"],
                 "switches": entry["switches"],
                 "choosers": entry["choosers"],
