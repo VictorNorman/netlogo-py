@@ -10,6 +10,8 @@ python -m uvicorn server.main:app --reload --port 8765
 
 Then open `http://localhost:8765`, pick a model, hit **setup** then **go**.
 
+No install, no server: **[netlogo-py.web.app](https://netlogo-py.web.app/)** — a static, WASM-only deploy (see "Live demo" below).
+
 ## The twelve ported models
 
 | Model | What it shows | Real source |
@@ -41,6 +43,22 @@ The **same** model files run two ways:
 - **WASM (browser)** — `static/pyodide-worker.js` runs a full CPython interpreter in a Web Worker via Pyodide, fetches the model's source as plain text, and `exec()`s it directly. Every tick runs client-side with zero network round-trips, and the **Code** tab lets you edit the running model's source and hit Run to see the change immediately — no rebuild, no reload, the same "edit and go" workflow NetLogo itself has.
 
 Switching the engine dropdown swaps the transport; the rendering code (`drawPatches`/`drawTurtles`/`drawPlot` in `static/app.js`) doesn't know or care which engine produced the state it's drawing.
+
+## Live demo (WASM-only, static hosting)
+
+**https://netlogo-py.web.app/** — a WASM-only build, deployed to Firebase Hosting.
+
+Firebase Hosting serves static files; it can't run `server/main.py`'s FastAPI process (and even if it could, that server's state is plain Python module-level globals shared across every request, not per-session — a bad fit for scaled/serverless compute anyway). The WASM engine needs no server at all, so a build with *only* WASM available is just static files:
+
+- `scripts/build_static.py` reuses `server/main.py`'s own `MODEL_REGISTRY` (importing it runs the exact same model-discovery code `/api/models` uses live) to write `dist/models.json` — the same shape `/api/models` returns, minus a working `"server-side"` entry — plus one plain-text `dist/model-source/<key>.py` per model, standing in for `/api/model-source`. Everything else (`static/*`, `engine/*.py`) is just copied over unchanged.
+- `static/app.js`'s `loadModels()` tries the live `/api/models` first; if that fails (no backend at all, as on a static host), it falls back to fetching `models.json` instead, forces the engine to `"wasm"`, and disables the engine dropdown (still visible, so it's clear *which* engine is running, just not switchable — there's nothing else here to switch to).
+
+To rebuild and redeploy:
+```
+python3 scripts/build_static.py
+firebase deploy --only hosting
+```
+This is a separate, additional deployment target — running `uvicorn server.main:app` locally (with both engines available) works exactly as before; nothing about local dev changed.
 
 ## Architecture
 

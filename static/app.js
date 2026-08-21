@@ -58,6 +58,14 @@ let currentEngine = "server-side";
 let plotStates = []; // one {spec, canvas, ctx, legendEl} per plot_widget() the active model declared
 let lastState = null; // most recent drawState() input, so mouse handlers can invert worldToCanvas()
 
+// Set true by loadModels() below if /api/models isn't reachable at all --
+// a static deploy with no backend process (e.g. Firebase Hosting; see
+// scripts/build_static.py), serving only the "wasm" engine. Everywhere
+// this app would otherwise unconditionally hit a live /api/* endpoint
+// (regardless of which engine is selected) checks this flag instead and
+// falls back to a pre-built static file fetched at the same moment.
+let staticMode = false;
+
 function currentParams() {
   const params = {};
   document.querySelectorAll(".param-slider").forEach((el) => {
@@ -876,22 +884,35 @@ function updateEngineUi() {
 
 async function loadCodeTab() {
   const modelKey = modelSelect.value;
-  // The WASM engine always runs the same source as the server-side
-  // engine (there's only ever the one model file) regardless of which
-  // server engine was last selected.
-  const engineParam = currentEngine === "wasm" ? "server-side" : currentEngine;
-  const response = await fetch(`/api/model-source?model=${modelKey}&engine=${engineParam}`, { cache: "no-store" });
-  const data = await response.json();
-  if (currentEngine === "wasm") {
-    codeEditor.value = data.source;
+  let source;
+  if (staticMode) {
+    // Pre-built by scripts/build_static.py -- same source /api/model-source
+    // would have read live, just at a fixed static path per model.
+    const response = await fetch(`/model-source/${modelKey}.py`, { cache: "no-store" });
+    source = await response.text();
   } else {
-    codeView.textContent = data.source;
+    // The WASM engine always runs the same source as the server-side
+    // engine (there's only ever the one model file) regardless of which
+    // server engine was last selected.
+    const engineParam = currentEngine === "wasm" ? "server-side" : currentEngine;
+    const response = await fetch(`/api/model-source?model=${modelKey}&engine=${engineParam}`, { cache: "no-store" });
+    source = (await response.json()).source;
+  }
+  if (currentEngine === "wasm") {
+    codeEditor.value = source;
+  } else {
+    codeView.textContent = source;
   }
 }
 
 async function selectModel(key) {
   stopGoLoop();
   renderControls(specsByKey[key]);
+  if (staticMode) {
+    await loadCodeTab();
+    await runWasmScript();
+    return;
+  }
   // Keep the server's active model in sync even while the WASM engine is
   // driving the UI, so /api/model-source's defaults stay correct if the
   // user switches back to a server engine.
@@ -929,8 +950,23 @@ async function selectEngine(engine) {
 }
 
 async function loadModels() {
-  const response = await fetch("/api/models");
-  const data = await response.json();
+  let data;
+  try {
+    const response = await fetch("/api/models");
+    if (!response.ok) {
+      throw new Error(`GET /api/models -> ${response.status}`);
+    }
+    data = await response.json();
+  } catch (err) {
+    // No backend process at all -- a static deploy (Firebase Hosting and
+    // similar; see scripts/build_static.py). models.json is pre-built
+    // with the exact same shape, except "engines" is empty -- there's no
+    // server to run "server-side" on, so only the always-appended wasm
+    // option below ends up in the dropdown.
+    staticMode = true;
+    const response = await fetch("/models.json");
+    data = await response.json();
+  }
 
   data.models.forEach((spec) => {
     specsByKey[spec.key] = spec;
@@ -952,10 +988,28 @@ async function loadModels() {
   engineSelect.appendChild(wasmOption);
 
   modelSelect.value = data.active;
-  engineSelect.value = data.active_engine;
-  currentEngine = data.active_engine;
+  currentEngine = staticMode ? "wasm" : data.active_engine;
+  engineSelect.value = currentEngine;
+  // Only one engine actually works with no backend -- lock the dropdown
+  // to it instead of hiding it, so it's still clear which engine is
+  // running (and that this is the browser-only engine, not an oversight).
+  engineSelect.disabled = staticMode;
   renderControls(specsByKey[data.active]);
   updateEngineUi();
+
+  if (staticMode) {
+    appendOutput("loading WASM engine (Pyodide + NumPy)… first load can take a few seconds.");
+    try {
+      await wasmCall("init", {});
+    } catch (err) {
+      appendOutput(`WASM engine failed to load: ${err.message}`);
+      return;
+    }
+    appendOutput("WASM engine ready.");
+    await loadCodeTab();
+    await runWasmScript();
+    return;
+  }
 
   const state = await callApi("/api/setup", currentParams());
   drawState(state);
