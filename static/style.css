@@ -85,10 +85,31 @@ body {
   width: 230px;
 }
 
-#sliders-container,
-#monitors-container {
+#sliders-container {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+
+/* Monitors and plots live below the canvas, not in the left-hand controls
+   column -- each its own horizontal grid, wrapping to as many rows as it
+   needs, rather than one long vertical stack. */
+.readouts-row {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#monitors-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+#plots-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 10px;
 }
 
